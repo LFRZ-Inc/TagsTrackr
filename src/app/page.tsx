@@ -191,7 +191,7 @@ export default function Home() {
             <p className="text-lg text-gray-600">Simple setup, powerful tracking</p>
           </div>
           
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="text-center">
               <div className="bg-blue-600 text-white rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold">
                 1
@@ -214,6 +214,14 @@ export default function Home() {
               </div>
               <h3 className="text-xl font-semibold mb-2">Get Updates</h3>
               <p className="text-gray-600">Receive real-time location updates and alerts on your phone or computer.</p>
+            </div>
+            
+            <div className="text-center">
+              <div className="bg-green-600 text-white rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold">
+                4
+              </div>
+              <h3 className="text-xl font-semibold mb-2">Return for Refund</h3>
+              <p className="text-gray-600">Return the tag for a refund — or let a kind stranger return your lost luggage and receive a $5 reward.</p>
             </div>
           </div>
         </div>
@@ -248,98 +256,99 @@ export default function Home() {
       <section id="pricing" className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Simple, Transparent Pricing</h2>
-            <p className="text-lg text-gray-600">Choose the plan that works for you</p>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Tagstrackr Pricing</h2>
+            <p className="text-lg text-gray-600">Simple, fair, and sustainable tracking solutions</p>
           </div>
           
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {/* Basic Tag */}
             <div className="border border-gray-200 rounded-lg p-8">
-              <h3 className="text-xl font-semibold mb-4">Basic</h3>
-              <div className="text-3xl font-bold mb-4">$29<span className="text-lg text-gray-500">/tag</span></div>
+              <h3 className="text-xl font-semibold mb-4 text-gray-900">Basic Tag</h3>
+              <div className="text-3xl font-bold mb-2 text-gray-900">$5</div>
+              <p className="text-sm text-gray-500 mb-6">(Non-Returnable)</p>
               <ul className="space-y-3 mb-6">
                 <li className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  Real-time GPS tracking
+                  Disposable GPS tracker
                 </li>
                 <li className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  Mobile app access
+                  Includes 5-day tracking window
                 </li>
                 <li className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  Basic alerts
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  30-day battery life
+                  Best for short trips or package tracking
                 </li>
               </ul>
-              <button className="w-full bg-gray-100 text-gray-800 py-2 rounded-md hover:bg-gray-200">
-                Get Started
-              </button>
+              <Link href="/register-tag" className="block w-full bg-gray-100 text-gray-800 py-2 rounded-md hover:bg-gray-200 text-center font-medium">
+                Get Basic Tag
+              </Link>
             </div>
             
+            {/* Reusable Tag */}
             <div className="border-2 border-blue-500 rounded-lg p-8 relative">
               <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-sm">
-                Most Popular
+                Recommended
               </div>
-              <h3 className="text-xl font-semibold mb-4">Pro</h3>
-              <div className="text-3xl font-bold mb-4">$49<span className="text-lg text-gray-500">/tag</span></div>
+              <h3 className="text-xl font-semibold mb-4 text-gray-900">Reusable Tag</h3>
+              <div className="text-3xl font-bold mb-2 text-gray-900">$10</div>
+              <p className="text-sm text-gray-500 mb-6">(Returnable)</p>
               <ul className="space-y-3 mb-6">
                 <li className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  Everything in Basic
+                  Return the tag after use and get <strong>$5 refunded</strong>
                 </li>
                 <li className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  Advanced geofencing
+                  Same GPS tracking features (5-day window)
                 </li>
                 <li className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  Temperature monitoring
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  60-day battery life
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  $5 return reward
+                  Ideal for frequent travelers or sustainable users
                 </li>
               </ul>
-              <button className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700">
-                Get Started
-              </button>
+              <Link href="/register-tag" className="block w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 text-center font-medium">
+                Get Reusable Tag
+              </Link>
+            </div>
+          </div>
+          
+          {/* Additional Options */}
+          <div className="mt-12 grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {/* Tag Recovery Reward */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <div className="bg-green-100 rounded-full p-2 mr-3">
+                  <DollarSign className="h-6 w-6 text-green-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Optional: Tag Recovery Reward</h3>
+              </div>
+              <p className="text-gray-600">
+                If someone finds your lost item and returns it via Tagstrackr, they receive a <strong>$5 reward</strong> from us
+              </p>
             </div>
             
-            <div className="border border-gray-200 rounded-lg p-8">
-              <h3 className="text-xl font-semibold mb-4">Enterprise</h3>
-              <div className="text-3xl font-bold mb-4">Custom</div>
-              <ul className="space-y-3 mb-6">
+            {/* Extended Subscription */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <div className="bg-blue-100 rounded-full p-2 mr-3">
+                  <Clock className="h-6 w-6 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Extended Subscription</h3>
+                  <p className="text-sm text-gray-500">(Optional) – $5/month</p>
+                </div>
+              </div>
+              <ul className="space-y-2 text-gray-600">
                 <li className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  Everything in Pro
+                  <CheckCircle className="h-4 w-4 text-blue-500 mr-2" />
+                  Extends tracking window beyond 5 days
                 </li>
                 <li className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  API access
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  Custom integrations
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  Dedicated support
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  Volume discounts
+                  <CheckCircle className="h-4 w-4 text-blue-500 mr-2" />
+                  Includes email/SMS alerts and historical movement logs
                 </li>
               </ul>
-              <button className="w-full bg-gray-100 text-gray-800 py-2 rounded-md hover:bg-gray-200">
-                Contact Sales
-              </button>
             </div>
           </div>
         </div>
