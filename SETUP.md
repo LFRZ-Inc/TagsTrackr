@@ -21,9 +21,8 @@
 4. **Configure environment variables**
    Create `.env.local` file in the root directory:
    ```env
-   NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-   SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+   NEXT_PUBLIC_SUPABASE_URL=https://fshmlrchvhrcbebfcoqz.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZzaG1scmNodmhyY2JlYmZjb3F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAyMDk0NzgsImV4cCI6MjA2NTc4NTQ3OH0.ZrTHjQrPzG5A-vjBIEnXHFWbhDMKpLr2jpkf9SOjbMA
    NEXT_PUBLIC_APP_URL=http://localhost:3000
    ```
 
