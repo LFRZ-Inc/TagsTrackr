@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     const { data: ping, error: pingError } = await supabase
       .from('gps_pings')
       .insert({
-        tag_id,
+        tag_id: tag.id,
         latitude,
         longitude,
         accuracy: accuracy || null,
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       .from('tags')
       .update({
         battery_level: battery_level || tag.battery_level,
-        last_ping: new Date().toISOString(),
+        last_seen_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
       .eq('tag_id', tag_id)
@@ -84,10 +84,10 @@ export async function POST(request: NextRequest) {
     const { error: logError } = await supabase
       .from('pings_log')
       .insert({
-        tag_id,
-        latitude,
-        longitude,
-        metadata: {
+        tag_id: tag.id,
+        ping_data: {
+          latitude,
+          longitude,
           accuracy,
           battery_level,
           signal_strength,

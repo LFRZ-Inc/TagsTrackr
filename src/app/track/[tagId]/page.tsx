@@ -9,10 +9,10 @@ interface TagData {
   id: string
   tag_id: string
   name: string
-  description: string
-  status: string
-  battery_level: number
-  last_seen_at: string
+  description: string | null
+  is_active: boolean | null
+  battery_level: number | null
+  last_seen_at: string | null
   last_location?: {
     latitude: number
     longitude: number
@@ -23,10 +23,10 @@ interface GPSPing {
   id: string
   latitude: number
   longitude: number
-  accuracy: number
-  battery_level: number
-  signal_strength: number
-  timestamp: string
+  accuracy: number | null
+  battery_level: number | null
+  signal_strength: number | null
+  timestamp: string | null
 }
 
 export default function TrackTag({ params }: { params: { tagId: string } }) {
@@ -63,8 +63,8 @@ export default function TrackTag({ params }: { params: { tagId: string } }) {
       setTagData({
         ...tag,
         last_location: pings[0] ? {
-          latitude: parseFloat(pings[0].latitude),
-          longitude: parseFloat(pings[0].longitude)
+          latitude: pings[0].latitude,
+          longitude: pings[0].longitude
         } : undefined
       })
       setRecentPings(pings || [])
@@ -154,11 +154,11 @@ export default function TrackTag({ params }: { params: { tagId: string } }) {
               <div className="flex justify-between items-center">
                 <span className="text-gray-700">Status</span>
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  tagData?.status === 'active' 
+                  tagData?.is_active === true 
                     ? 'bg-green-100 text-green-800' 
                     : 'bg-red-100 text-red-800'
                 }`}>
-                  {tagData?.status || 'Unknown'}
+                  {tagData?.is_active ? 'Active' : 'Inactive'}
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -200,35 +200,50 @@ export default function TrackTag({ params }: { params: { tagId: string } }) {
               <div className="p-6 text-center">
                 <MapPin className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No location data</h3>
-                <p className="text-gray-500">
-                  This tag hasn't sent any GPS pings yet. Try using the admin panel to simulate some data.
-                </p>
+                <p className="text-gray-500">This tag hasn't sent any GPS pings yet.</p>
               </div>
             ) : (
               recentPings.map((ping, index) => (
-                <div key={ping.id} className="p-6 flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="flex-shrink-0">
-                      <div className={`h-3 w-3 rounded-full ${
-                        index === 0 ? 'bg-green-400' : 'bg-gray-300'
-                      }`} />
+                <div key={ping.id} className="p-4">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <div className="flex items-center text-sm text-gray-600">
+                        <MapPin className="h-4 w-4 mr-1" />
+                        {ping.latitude.toFixed(6)}, {ping.longitude.toFixed(6)}
+                      </div>
+                      {ping.accuracy && (
+                        <div className="text-xs text-gray-500">
+                          Accuracy: ±{ping.accuracy}m
+                        </div>
+                      )}
                     </div>
-                    <div>
-                                             <p className="text-sm font-medium text-gray-900">
-                         {parseFloat(ping.latitude.toString()).toFixed(6)}, {parseFloat(ping.longitude.toString()).toFixed(6)}
-                       </p>
-                      <p className="text-sm text-gray-500">
-                        {new Date(ping.timestamp).toLocaleString()}
-                      </p>
+                    <div className="text-right space-y-1">
+                      <div className="text-sm text-gray-600">
+                        {ping.timestamp ? new Date(ping.timestamp).toLocaleString() : 'Unknown time'}
+                      </div>
+                      <div className="flex items-center text-xs text-gray-500">
+                        {ping.battery_level && (
+                          <>
+                            <Battery className="h-3 w-3 mr-1" />
+                            {ping.battery_level}%
+                          </>
+                        )}
+                        {ping.signal_strength && (
+                          <>
+                            <Signal className="h-3 w-3 ml-2 mr-1" />
+                            {ping.signal_strength} dBm
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-4 text-sm text-gray-500">
-                    <div className="flex items-center">
-                      <Battery className="h-4 w-4 mr-1" />
-                      {ping.battery_level}%
+                  {index === 0 && (
+                    <div className="mt-2">
+                      <span className="inline-flex px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                        Latest
+                      </span>
                     </div>
-                    <div>±{ping.accuracy}m</div>
-                  </div>
+                  )}
                 </div>
               ))
             )}

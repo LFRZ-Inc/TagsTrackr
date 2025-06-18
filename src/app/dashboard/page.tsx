@@ -11,15 +11,15 @@ interface Tag {
   id: string
   tag_id: string
   name: string
-  description: string
-  is_active: boolean
-  battery_level: number
-  created_at: string
+  description: string | null
+  is_active: boolean | null
+  battery_level: number | null
+  created_at: string | null
   latest_ping?: {
     latitude: number
     longitude: number
-    battery_level: number
-    timestamp: string
+    battery_level: number | null
+    timestamp: string | null
   }
   last_ping_time: string
 }
@@ -76,7 +76,8 @@ export default function Dashboard() {
         return {
           ...tag,
           latest_ping: latestPing,
-          last_ping_time: latestPing ? new Date(latestPing.timestamp).toLocaleString() : 'No pings yet'
+          last_ping_time: latestPing && latestPing.timestamp ? 
+            new Date(latestPing.timestamp).toLocaleString() : 'No pings yet'
         }
       })
 
@@ -104,6 +105,7 @@ export default function Dashboard() {
 
   const activeTags = tags.filter(tag => tag.is_active)
   const onlineTags = tags.filter(tag => tag.latest_ping && 
+    tag.latest_ping.timestamp &&
     new Date(tag.latest_ping.timestamp) > new Date(Date.now() - 30 * 60 * 1000)) // Last 30 minutes
   const lowBatteryTags = tags.filter(tag => 
     tag.latest_ping?.battery_level && tag.latest_ping.battery_level < 20)
@@ -205,26 +207,26 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="flex items-center space-x-4">
-                      <div className="text-center">
-                        <div className="flex items-center">
-                                                  <Battery 
-                          className={`h-5 w-5 mr-1 ${
-                            (tag.latest_ping?.battery_level ?? 0) > 20 ? 'text-green-500' : 'text-yellow-500'
-                          }`} 
-                        />
-                        <span>{tag.latest_ping?.battery_level ?? '--'}%</span>
+                      <div className="text-right">
+                        <div className="flex items-center text-sm text-gray-500">
+                          <Battery className="h-4 w-4 mr-1" />
+                          {tag.battery_level || tag.latest_ping?.battery_level || 'Unknown'}%
                         </div>
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          onlineTags.includes(tag) 
-                            ? 'bg-green-100 text-green-800' 
+                        <div className={`text-xs px-2 py-1 rounded-full ${
+                          tag.latest_ping && tag.latest_ping.timestamp &&
+                          new Date(tag.latest_ping.timestamp) > new Date(Date.now() - 30 * 60 * 1000)
+                            ? 'bg-green-100 text-green-800'
                             : 'bg-red-100 text-red-800'
                         }`}>
-                          {onlineTags.includes(tag) ? 'Online' : 'Offline'}
-                        </span>
+                          {tag.latest_ping && tag.latest_ping.timestamp &&
+                          new Date(tag.latest_ping.timestamp) > new Date(Date.now() - 30 * 60 * 1000)
+                            ? 'Online'
+                            : 'Offline'}
+                        </div>
                       </div>
-                      <Link 
+                      <Link
                         href={`/track/${tag.tag_id}`}
-                        className="bg-primary-100 text-primary-700 px-4 py-2 rounded-lg hover:bg-primary-200"
+                        className="bg-primary-600 text-white px-3 py-1 rounded text-sm hover:bg-primary-700"
                       >
                         Track
                       </Link>
@@ -236,30 +238,32 @@ export default function Dashboard() {
           </div>
 
           {/* Quick Actions */}
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Link 
-              href="/admin"
-              className="bg-blue-50 p-6 rounded-lg border border-blue-200 hover:bg-blue-100"
-            >
-              <h3 className="font-medium text-blue-900">Test GPS Simulator</h3>
-              <p className="text-sm text-blue-700 mt-2">
-                Generate test GPS pings to see your tags in action
-              </p>
-            </Link>
-            <Link 
-              href="/register-tag"
-              className="bg-green-50 p-6 rounded-lg border border-green-200 hover:bg-green-100"
-            >
-              <h3 className="font-medium text-green-900">Add New Tag</h3>
-              <p className="text-sm text-green-700 mt-2">
-                Register a new GPS tracking device
-              </p>
-            </Link>
-            <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-              <h3 className="font-medium text-gray-900">Need Help?</h3>
-              <p className="text-sm text-gray-700 mt-2">
-                Check out our setup guide and documentation
-              </p>
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-medium mb-4">Quick Actions</h3>
+              <div className="space-y-2">
+                <Link
+                  href="/register-tag"
+                  className="block w-full bg-primary-600 text-white text-center py-2 rounded hover:bg-primary-700"
+                >
+                  Register New Tag
+                </Link>
+                <Link
+                  href="/admin"
+                  className="block w-full bg-gray-600 text-white text-center py-2 rounded hover:bg-gray-700"
+                >
+                  Admin Panel
+                </Link>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-medium mb-4">Getting Started</h3>
+              <ul className="text-sm text-gray-600 space-y-2">
+                <li>• Register your GPS tags</li>
+                <li>• Monitor real-time locations</li>
+                <li>• Set up geofence alerts</li>
+                <li>• Track battery levels</li>
+              </ul>
             </div>
           </div>
         </div>

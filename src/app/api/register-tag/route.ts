@@ -4,11 +4,11 @@ import { generateTagId } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
-    const { tag_id, user_id } = await request.json()
+    const { tag_id, user_id, name, description } = await request.json()
 
-    if (!tag_id || !user_id) {
+    if (!tag_id || !user_id || !name) {
       return NextResponse.json(
-        { error: 'Tag ID and User ID are required' },
+        { error: 'Tag ID, User ID, and name are required' },
         { status: 400 }
       )
     }
@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
         .from('tags')
         .update({ 
           user_id,
+          name,
+          description,
           is_active: true,
           updated_at: new Date().toISOString()
         })
@@ -58,6 +60,8 @@ export async function POST(request: NextRequest) {
       .from('tags')
       .insert({
         tag_id,
+        name,
+        description,
         user_id,
         is_active: true,
         battery_level: 100,

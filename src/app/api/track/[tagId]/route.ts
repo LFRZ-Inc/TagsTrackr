@@ -29,11 +29,11 @@ export async function GET(
       )
     }
 
-    // Get latest GPS ping
+    // Get latest GPS ping using the tag's UUID
     const { data: latestPing, error: pingError } = await supabase
       .from('gps_pings')
       .select('*')
-      .eq('tag_id', tagId)
+      .eq('tag_id', tag.id)
       .order('created_at', { ascending: false })
       .limit(1)
       .single()
@@ -50,7 +50,7 @@ export async function GET(
     const { data: recentPings, error: historyError } = await supabase
       .from('gps_pings')
       .select('*')
-      .eq('tag_id', tagId)
+      .eq('tag_id', tag.id)
       .order('created_at', { ascending: false })
       .limit(10)
 
@@ -63,7 +63,7 @@ export async function GET(
         id: tag.tag_id,
         is_active: tag.is_active,
         battery_level: tag.battery_level,
-        last_ping: tag.last_ping,
+        last_seen_at: tag.last_seen_at,
         created_at: tag.created_at
       },
       current_location: latestPing ? {
