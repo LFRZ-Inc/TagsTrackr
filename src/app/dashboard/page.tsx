@@ -19,22 +19,38 @@ import {
   Signal,
   Folder,
   Map,
-  LogOut
+  LogOut,
+  Smartphone,
+  Tablet,
+  Watch,
+  Laptop,
+  Grid3X3,
+  List
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAppStore } from '@/lib/store'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import AdBanner from '@/components/ads/AdBanner'
+import InteractiveMap from '@/components/InteractiveMap'
+import DeviceTypeSelector from '@/components/DeviceTypeSelector'
+import LocationSharingControl from '@/components/LocationSharingControl'
 
-interface Tag {
+interface Device {
   id: string
   tag_id: string
-  name: string
+  name?: string
+  type: string
+  device_type: string
+  device_model?: string
+  device_os?: string
   description: string | null
   is_active: boolean | null
   battery_level: number | null
   last_seen_at: string | null
+  last_ping_at?: string | null
   group_name: string | null
+  sharing_enabled?: boolean
+  location_sharing_active?: boolean
   current_location?: {
     latitude: number
     longitude: number
@@ -42,35 +58,48 @@ interface Tag {
 }
 
 interface DashboardStats {
-  totalTags: number
-  activeTags: number
-  lowBatteryTags: number
-  offlineTags: number
+  totalDevices: number
+  activeDevices: number
+  lowBatteryDevices: number
+  offlineDevices: number
+  gpsTagsCount: number
+  personalDevicesCount: number
 }
+
+const deviceTypeIcons = {
+  gps_tag: MapPin,
+  phone: Smartphone,
+  tablet: Tablet,
+  watch: Watch,
+  laptop: Laptop
+};
 
 export default function Dashboard() {
   const [user, setUser] = useState<SupabaseUser | null>(null)
-  const [tags, setTags] = useState<Tag[]>([])
-  const [filteredTags, setFilteredTags] = useState<Tag[]>([])
+  const [devices, setDevices] = useState<Device[]>([])
+  const [filteredDevices, setFilteredDevices] = useState<Device[]>([])
   const [stats, setStats] = useState<DashboardStats>({
-    totalTags: 0,
-    activeTags: 0,
-    lowBatteryTags: 0,
-    offlineTags: 0
+    totalDevices: 0,
+    activeDevices: 0,
+    lowBatteryDevices: 0,
+    offlineDevices: 0,
+    gpsTagsCount: 0,
+    personalDevicesCount: 0
   })
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'low_battery'>('all')
+  const [deviceTypeFilter, setDeviceTypeFilter] = useState<'all' | 'gps_tag' | 'phone' | 'tablet' | 'watch' | 'laptop'>('all')
   const [selectedGroup, setSelectedGroup] = useState<string>('all')
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'map'>('map')
   const [showGroupModal, setShowGroupModal] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
-  const [groupingTag, setGroupingTag] = useState<string | null>(null)
+  const [groupingDevice, setGroupingDevice] = useState<string | null>(null)
   const [realTimeEnabled, setRealTimeEnabled] = useState(true)
+  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null)
 
   const router = useRouter()
-  const { userTags: storeTags } = useAppStore()
 
   useEffect(() => {
     checkUser()
@@ -78,9 +107,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (user) {
-      fetchTags()
+      fetchDevices()
       
-      // Setup real-time subscription
+      // Setup real-time subscription for device locations
       if (realTimeEnabled) {
         const subscription = supabase
           .channel('dashboard_updates')
@@ -88,23 +117,22 @@ export default function Dashboard() {
             { 
               event: '*', 
               schema: 'public', 
-              table: 'tags',
-              filter: `user_id=eq.${user.id}`
+              table: 'devices',
+              filter: `owner_id=eq.${user.id}`
             }, 
             (payload) => {
-              console.log('Tag update received:', payload)
-              fetchTags() // Refresh tags on any change
+              console.log('Device update received:', payload)
+              fetchDevices()
             }
           )
           .on('postgres_changes', 
             { 
               event: 'INSERT', 
               schema: 'public', 
-              table: 'gps_pings'
+              table: 'device_locations'
             }, 
             (payload) => {
-              console.log('New ping received:', payload)
-              // Update specific tag with new location
+              console.log('New location ping received:', payload)
               handleNewPing(payload.new as any)
             }
           )
@@ -118,54 +146,60 @@ export default function Dashboard() {
   }, [user, realTimeEnabled])
 
   useEffect(() => {
-    // Filter tags based on search term, status filter, and group
-    let filtered = tags
+    // Filter devices based on search term, status filter, device type, and group
+    let filtered = devices
 
     if (searchTerm) {
-      filtered = filtered.filter(tag => 
-        tag.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        tag.tag_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (tag.description && tag.description.toLowerCase().includes(searchTerm.toLowerCase()))
+      filtered = filtered.filter(device => 
+        device.tag_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (device.name && device.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (device.description && device.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (device.device_model && device.device_model.toLowerCase().includes(searchTerm.toLowerCase()))
       )
     }
 
     if (filterStatus !== 'all') {
-      filtered = filtered.filter(tag => {
+      filtered = filtered.filter(device => {
         switch (filterStatus) {
           case 'active':
-            return tag.is_active === true
+            return device.is_active === true
           case 'inactive':
-            return tag.is_active === false
+            return device.is_active === false
           case 'low_battery':
-            return (tag.battery_level ?? 100) < 20
+            return (device.battery_level ?? 100) < 20
           default:
             return true
         }
       })
     }
 
-    if (selectedGroup !== 'all') {
-      filtered = filtered.filter(tag => tag.group_name === selectedGroup)
+    if (deviceTypeFilter !== 'all') {
+      filtered = filtered.filter(device => device.device_type === deviceTypeFilter)
     }
 
-    setFilteredTags(filtered)
-  }, [tags, searchTerm, filterStatus, selectedGroup])
+    if (selectedGroup !== 'all') {
+      filtered = filtered.filter(device => device.group_name === selectedGroup)
+    }
+
+    setFilteredDevices(filtered)
+  }, [devices, searchTerm, filterStatus, deviceTypeFilter, selectedGroup])
 
   const handleNewPing = (ping: any) => {
-    setTags(prevTags => 
-      prevTags.map(tag => {
-        if (tag.id === ping.tag_id) {
+    setDevices(prevDevices => 
+      prevDevices.map(device => {
+        if (device.id === ping.device_id) {
           return {
-            ...tag,
+            ...device,
             current_location: {
               latitude: ping.latitude,
               longitude: ping.longitude
             },
-            battery_level: ping.battery_level || tag.battery_level,
-            last_seen_at: ping.timestamp || ping.created_at
+            battery_level: ping.battery_level || device.battery_level,
+            last_seen_at: ping.recorded_at || ping.created_at,
+            last_ping_at: ping.recorded_at || ping.created_at
           }
         }
-        return tag
+        return device
       })
     )
   }
@@ -184,53 +218,59 @@ export default function Dashboard() {
     }
   }
 
-  async function fetchTags() {
+  async function fetchDevices() {
     if (!user) return
     
     try {
       setRefreshing(true)
       
-      // Fetch tags with latest location data
-      const { data: tagsData, error: tagsError } = await supabase
-        .from('tags')
+      // Fetch all devices (GPS tags and personal devices) with latest location data
+      const { data: devicesData, error: devicesError } = await supabase
+        .from('devices')
         .select(`
           *,
-          latest_location:gps_pings!gps_pings_tag_id_fkey(
+          latest_location:device_locations!device_locations_device_id_fkey(
             latitude,
             longitude,
-            timestamp
+            recorded_at
           )
         `)
-        .eq('user_id', user.id)
+        .eq('owner_id', user.id)
         .order('created_at', { ascending: false })
 
-      if (tagsError) throw tagsError
+      if (devicesError) throw devicesError
 
-      // Process tags to include current location
-      const processedTags = tagsData?.map(tag => ({
-        ...tag,
-        current_location: tag.latest_location?.[0] ? {
-          latitude: tag.latest_location[0].latitude,
-          longitude: tag.latest_location[0].longitude
-        } : undefined
+      // Process devices to include current location and normalize data
+      const processedDevices = devicesData?.map(device => ({
+        ...device,
+        name: device.tag_id, // Use tag_id as display name
+        current_location: device.latest_location?.[0] ? {
+          latitude: device.latest_location[0].latitude,
+          longitude: device.latest_location[0].longitude
+        } : undefined,
+        last_seen_at: device.latest_location?.[0]?.recorded_at || device.last_ping_at
       })) || []
 
-      setTags(processedTags)
+      setDevices(processedDevices)
       
       // Calculate stats
-      const totalTags = processedTags.length
-      const activeTags = processedTags.filter(tag => tag.is_active).length
-      const lowBatteryTags = processedTags.filter(tag => (tag.battery_level ?? 100) < 20).length
-      const offlineTags = processedTags.filter(tag => !tag.is_active).length
+      const totalDevices = processedDevices.length
+      const activeDevices = processedDevices.filter(device => device.is_active).length
+      const lowBatteryDevices = processedDevices.filter(device => (device.battery_level ?? 100) < 20).length
+      const offlineDevices = processedDevices.filter(device => !device.is_active).length
+      const gpsTagsCount = processedDevices.filter(device => device.device_type === 'gps_tag').length
+      const personalDevicesCount = processedDevices.filter(device => ['phone', 'tablet', 'watch', 'laptop'].includes(device.device_type)).length
 
       setStats({
-        totalTags,
-        activeTags,
-        lowBatteryTags,
-        offlineTags
+        totalDevices,
+        activeDevices,
+        lowBatteryDevices,
+        offlineDevices,
+        gpsTagsCount,
+        personalDevicesCount
       })
     } catch (error) {
-      console.error('Error fetching tags:', error)
+      console.error('Error fetching devices:', error)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -238,31 +278,31 @@ export default function Dashboard() {
   }
 
   const handleRefresh = () => {
-    fetchTags()
+    fetchDevices()
   }
 
-  const handleGroupTag = async (tagId: string, groupName: string) => {
+  const handleGroupDevice = async (deviceId: string, groupName: string) => {
     try {
       const { error } = await supabase
-        .from('tags')
+        .from('devices')
         .update({ group_name: groupName })
-        .eq('id', tagId)
+        .eq('id', deviceId)
 
       if (error) throw error
 
       // Update local state
-      setTags(prevTags =>
-        prevTags.map(tag =>
-          tag.id === tagId ? { ...tag, group_name: groupName } : tag
+      setDevices(prevDevices =>
+        prevDevices.map(device =>
+          device.id === deviceId ? { ...device, group_name: groupName } : device
         )
       )
 
       setShowGroupModal(false)
       setNewGroupName('')
-      setGroupingTag(null)
+      setGroupingDevice(null)
     } catch (error) {
       console.error('Error updating group:', error)
-      alert('Failed to update tag group')
+      alert('Failed to update device group')
     }
   }
 
@@ -272,8 +312,8 @@ export default function Dashboard() {
   }
 
   const getUniqueGroups = () => {
-    const groups = tags
-      .map(tag => tag.group_name)
+    const groups = devices
+      .map(device => device.group_name)
       .filter((group, index, array) => group && array.indexOf(group) === index)
     return groups as string[]
   }
@@ -283,13 +323,6 @@ export default function Dashboard() {
     if (level > 50) return 'text-green-600'
     if (level > 20) return 'text-yellow-600'
     return 'text-red-600'
-  }
-
-  const getBatteryIcon = (level: number | null) => {
-    if (!level || level > 75) return '🔋'
-    if (level > 50) return '🔋'
-    if (level > 25) return '🪫'
-    return '🪫'
   }
 
   const formatTimestamp = (timestamp: string) => {
@@ -307,12 +340,23 @@ export default function Dashboard() {
     return date.toLocaleDateString()
   }
 
+  const getDeviceTypeDisplayName = (deviceType: string) => {
+    switch (deviceType) {
+      case 'gps_tag': return 'GPS Tag'
+      case 'phone': return 'Phone'
+      case 'tablet': return 'Tablet'
+      case 'watch': return 'Watch'
+      case 'laptop': return 'Laptop'
+      default: return deviceType
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-600"></div>
-          <p className="mt-4 text-gray-600">Loading your tags...</p>
+          <p className="mt-4 text-gray-600">Loading your devices...</p>
         </div>
       </div>
     )
@@ -377,33 +421,34 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         {/* Page Header */}
         <div className="mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Dashboard</h1>
-              <p className="text-gray-600">Monitor and manage your GPS tags</p>
+              <h1 className="text-3xl font-bold text-gray-900">Device Dashboard</h1>
+              <p className="text-gray-600">Track all your GPS tags and personal devices</p>
             </div>
-            <div className="mt-4 sm:mt-0 flex space-x-2">
+            <div className="flex space-x-3">
+              <DeviceTypeSelector onDeviceAdded={fetchDevices} />
               <Link
                 href="/register-tag"
-                className="flex items-center px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+                className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Add Tag
+                Add GPS Tag
               </Link>
             </div>
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {/* Enhanced Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
           <div className="bg-white rounded-lg shadow p-4">
             <div className="flex items-center">
               <div className="p-2 bg-blue-100 rounded-full">
                 <MapPin className="h-5 w-5 text-blue-600" />
               </div>
               <div className="ml-3">
-                <p className="text-sm font-medium text-gray-700">Total Tags</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalTags}</p>
+                <p className="text-sm font-medium text-gray-700">Total Devices</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalDevices}</p>
               </div>
             </div>
           </div>
@@ -415,7 +460,7 @@ export default function Dashboard() {
               </div>
               <div className="ml-3">
                 <p className="text-sm font-medium text-gray-700">Active</p>
-                <p className="text-2xl font-bold text-green-600">{stats.activeTags}</p>
+                <p className="text-2xl font-bold text-green-600">{stats.activeDevices}</p>
               </div>
             </div>
           </div>
@@ -427,7 +472,7 @@ export default function Dashboard() {
               </div>
               <div className="ml-3">
                 <p className="text-sm font-medium text-gray-700">Low Battery</p>
-                <p className="text-2xl font-bold text-yellow-600">{stats.lowBatteryTags}</p>
+                <p className="text-2xl font-bold text-yellow-600">{stats.lowBatteryDevices}</p>
               </div>
             </div>
           </div>
@@ -439,7 +484,31 @@ export default function Dashboard() {
               </div>
               <div className="ml-3">
                 <p className="text-sm font-medium text-gray-700">Offline</p>
-                <p className="text-2xl font-bold text-red-600">{stats.offlineTags}</p>
+                <p className="text-2xl font-bold text-red-600">{stats.offlineDevices}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center">
+              <div className="p-2 bg-purple-100 rounded-full">
+                <MapPin className="h-5 w-5 text-purple-600" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-700">GPS Tags</p>
+                <p className="text-2xl font-bold text-purple-600">{stats.gpsTagsCount}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center">
+              <div className="p-2 bg-indigo-100 rounded-full">
+                <Smartphone className="h-5 w-5 text-indigo-600" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-700">Personal</p>
+                <p className="text-2xl font-bold text-indigo-600">{stats.personalDevicesCount}</p>
               </div>
             </div>
           </div>
@@ -448,17 +517,20 @@ export default function Dashboard() {
         {/* Ad Banner */}
         <AdBanner pageContext="dashboard" className="mb-6" />
 
+        {/* Location Sharing Control */}
+        <LocationSharingControl devices={devices} onDeviceUpdate={fetchDevices} />
+
         {/* Filters and Search */}
         <div className="bg-white rounded-lg shadow mb-6">
           <div className="p-4 border-b border-gray-200">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
               <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
                 {/* Search */}
                 <div className="relative">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Search tags..."
+                    placeholder="Search devices..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 w-full sm:w-64"
@@ -477,6 +549,20 @@ export default function Dashboard() {
                   <option value="low_battery">Low Battery</option>
                 </select>
 
+                {/* Device Type Filter */}
+                <select
+                  value={deviceTypeFilter}
+                  onChange={(e) => setDeviceTypeFilter(e.target.value as any)}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="all">All Types</option>
+                  <option value="gps_tag">GPS Tags</option>
+                  <option value="phone">Phones</option>
+                  <option value="tablet">Tablets</option>
+                  <option value="watch">Watches</option>
+                  <option value="laptop">Laptops</option>
+                </select>
+
                 {/* Group Filter */}
                 <select
                   value={selectedGroup}
@@ -493,187 +579,200 @@ export default function Dashboard() {
               {/* View Mode Toggle */}
               <div className="flex items-center space-x-2">
                 <button
+                  onClick={() => setViewMode('map')}
+                  className={`p-2 rounded-md ${viewMode === 'map' ? 'bg-primary-100 text-primary-600' : 'text-gray-400'}`}
+                >
+                  <Map className="h-4 w-4" />
+                </button>
+                <button
                   onClick={() => setViewMode('grid')}
                   className={`p-2 rounded-md ${viewMode === 'grid' ? 'bg-primary-100 text-primary-600' : 'text-gray-400'}`}
                 >
-                  <BarChart3 className="h-4 w-4" />
+                  <Grid3X3 className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
                   className={`p-2 rounded-md ${viewMode === 'list' ? 'bg-primary-100 text-primary-600' : 'text-gray-400'}`}
                 >
-                  <Map className="h-4 w-4" />
+                  <List className="h-4 w-4" />
                 </button>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Tags Display */}
-        {filteredTags.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
-            <MapPin className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-medium text-gray-900 mb-2">
-              {tags.length === 0 ? 'No tags registered yet' : 'No tags match your filters'}
-            </h3>
-            <p className="text-gray-600 mb-6">
-              {tags.length === 0 
-                ? 'Get started by registering your first GPS tag.' 
-                : 'Try adjusting your search or filter criteria.'
-              }
-            </p>
-            {tags.length === 0 && (
-              <Link
-                href="/register-tag"
-                className="inline-flex items-center px-6 py-3 bg-primary-600 text-white rounded-md hover:bg-primary-700"
-              >
-                <Plus className="h-5 w-5 mr-2" />
-                Register First Tag
-              </Link>
-            )}
+        {/* Main Content */}
+        {viewMode === 'map' ? (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="h-96">
+              <InteractiveMap
+                tags={filteredDevices}
+                selectedTag={selectedDevice}
+                height="100%"
+                onTagClick={setSelectedDevice}
+                showRoute={true}
+                autoCenter={true}
+                realTimeUpdates={realTimeEnabled}
+              />
+            </div>
           </div>
         ) : (
-          <div className={`grid gap-4 ${
-            viewMode === 'grid' 
-              ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' 
-              : 'grid-cols-1'
-          }`}>
-            {filteredTags.map((tag) => (
-              <div key={tag.id} className="bg-white rounded-lg shadow hover:shadow-md transition-shadow">
-                <div className="p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <h3 className="text-lg font-medium text-gray-900 truncate">{tag.name}</h3>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          tag.is_active 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {tag.is_active ? 'Active' : 'Offline'}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 truncate">{tag.description || 'No description'}</p>
-                      <p className="text-xs text-gray-500 mt-1">ID: {tag.tag_id}</p>
-                      {tag.group_name && (
-                        <div className="flex items-center mt-1">
-                          <Folder className="h-3 w-3 text-gray-400 mr-1" />
-                          <span className="text-xs text-gray-500">{tag.group_name}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end space-y-1">
-                      <div className="flex items-center text-sm">
-                        <Battery className={`h-4 w-4 mr-1 ${getBatteryColor(tag.battery_level)}`} />
-                        <span className={getBatteryColor(tag.battery_level)}>
-                          {tag.battery_level ?? '--'}%
-                        </span>
-                      </div>
-                      {tag.current_location && (
-                        <div className="flex items-center text-xs text-gray-500">
-                          <MapPin className="h-3 w-3 mr-1" />
-                          Location: Yes
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
-                    <div className="flex items-center">
-                      <Clock className="h-4 w-4 mr-1" />
-                      {tag.last_seen_at ? formatTimestamp(tag.last_seen_at) : 'Never seen'}
-                    </div>
-                  </div>
-
-                  <div className="flex space-x-2">
-                    <Link
-                      href={`/track/${tag.tag_id}`}
-                      className="flex-1 flex items-center justify-center px-3 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 text-sm"
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      Track
-                    </Link>
-                    <button
-                      onClick={() => {
-                        setGroupingTag(tag.id)
-                        setShowGroupModal(true)
-                      }}
-                      className="px-3 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm"
-                    >
-                      <Folder className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Group Modal */}
-      {showGroupModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Assign to Group</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Existing Groups</label>
-                <div className="space-y-2">
-                  {getUniqueGroups().map(group => (
-                    <button
-                      key={group}
-                      onClick={() => handleGroupTag(groupingTag!, group)}
-                      className="w-full text-left px-3 py-2 bg-gray-100 rounded-md hover:bg-gray-200"
-                    >
-                      {group}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Create New Group</label>
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={newGroupName}
-                    onChange={(e) => setNewGroupName(e.target.value)}
-                    className="flex-1 p-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Group name"
-                  />
-                  <button
-                    onClick={() => handleGroupTag(groupingTag!, newGroupName)}
-                    disabled={!newGroupName.trim()}
-                    className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
+          /* Device List/Grid */
+          filteredDevices.length === 0 ? (
+            <div className="bg-white rounded-lg shadow p-12 text-center">
+              <MapPin className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-medium text-gray-900 mb-2">
+                {devices.length === 0 ? 'No devices registered yet' : 'No devices match your filters'}
+              </h3>
+              <p className="text-gray-600 mb-6">
+                {devices.length === 0 
+                  ? 'Get started by adding your first GPS tag or personal device.' 
+                  : 'Try adjusting your search or filter criteria.'
+                }
+              </p>
+              {devices.length === 0 && (
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <Link
+                    href="/register-tag"
+                    className="inline-flex items-center px-6 py-3 bg-primary-600 text-white rounded-md hover:bg-primary-700"
                   >
-                    Create
+                    <Plus className="h-5 w-5 mr-2" />
+                    Add GPS Tag
+                  </Link>
+                  <DeviceTypeSelector onDeviceAdded={fetchDevices} className="bg-blue-600 hover:bg-blue-700" />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className={`grid gap-4 ${
+              viewMode === 'grid' 
+                ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' 
+                : 'grid-cols-1'
+            }`}>
+              {filteredDevices.map((device) => {
+                const DeviceIcon = deviceTypeIcons[device.device_type as keyof typeof deviceTypeIcons] || MapPin;
+                return (
+                  <div key={device.id} className="bg-white rounded-lg shadow hover:shadow-md transition-shadow">
+                    <div className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <DeviceIcon className="h-5 w-5 text-gray-600" />
+                            <h3 className="text-lg font-medium text-gray-900 truncate">{device.name || device.tag_id}</h3>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              device.is_active 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {device.is_active ? 'Active' : 'Offline'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 truncate">
+                            {getDeviceTypeDisplayName(device.device_type)}
+                            {device.device_model && ` • ${device.device_model}`}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">ID: {device.tag_id}</p>
+                          {device.group_name && (
+                            <div className="flex items-center mt-1">
+                              <Folder className="h-3 w-3 text-gray-400 mr-1" />
+                              <span className="text-xs text-gray-500">{device.group_name}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end space-y-1">
+                          {device.battery_level !== null && (
+                            <div className="flex items-center text-sm">
+                              <Battery className={`h-4 w-4 mr-1 ${getBatteryColor(device.battery_level)}`} />
+                              <span className={getBatteryColor(device.battery_level)}>
+                                {device.battery_level}%
+                              </span>
+                            </div>
+                          )}
+                          {device.current_location && (
+                            <div className="flex items-center text-xs text-gray-500">
+                              <MapPin className="h-3 w-3 mr-1" />
+                              Location: Yes
+                            </div>
+                          )}
+                          {device.location_sharing_active && (
+                            <div className="flex items-center text-xs text-green-600">
+                              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></div>
+                              Sharing
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
+                        <div className="flex items-center">
+                          <Clock className="h-4 w-4 mr-1" />
+                          {device.last_seen_at ? formatTimestamp(device.last_seen_at) : 'Never seen'}
+                        </div>
+                      </div>
+
+                      <div className="flex space-x-2">
+                        <Link
+                          href={`/track/${device.tag_id}`}
+                          className="flex-1 flex items-center justify-center px-3 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 text-sm"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          Track
+                        </Link>
+                        <button
+                          onClick={() => {
+                            setGroupingDevice(device.id)
+                            setShowGroupModal(true)
+                          }}
+                          className="px-3 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 text-sm"
+                        >
+                          <Folder className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        )}
+
+        {/* Group Modal */}
+        {showGroupModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+              <div className="p-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Group Device</h3>
+                <input
+                  type="text"
+                  placeholder="Enter group name"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                />
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => {
+                      setShowGroupModal(false)
+                      setNewGroupName('')
+                      setGroupingDevice(null)
+                    }}
+                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => groupingDevice && handleGroupDevice(groupingDevice, newGroupName)}
+                    disabled={!newGroupName.trim()}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Save
                   </button>
                 </div>
               </div>
             </div>
-
-            <div className="flex space-x-3 mt-6">
-              <button
-                onClick={() => {
-                  setShowGroupModal(false)
-                  setNewGroupName('')
-                  setGroupingTag(null)
-                }}
-                className="flex-1 px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleGroupTag(groupingTag!, '')}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-              >
-                Remove from Group
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 } 

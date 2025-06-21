@@ -42,9 +42,15 @@ interface MapLocation {
 interface Tag {
   id: string
   tag_id: string
-  name: string
-  is_active: boolean
-  battery_level?: number | null
+  name?: string
+  type: string
+  device_type: string
+  description: string | null
+  is_active: boolean | null
+  battery_level: number | null
+  last_seen_at: string | null
+  group_name: string | null
+  location_sharing_active?: boolean
   current_location?: MapLocation
 }
 
@@ -206,7 +212,7 @@ export default function InteractiveMap({
         style={{ height, width: '100%' }}
         className="rounded-lg z-0"
         ref={mapRef}
-        whenCreated={setMap}
+        whenReady={() => setMap(mapRef.current)}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
