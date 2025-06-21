@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { MapPin, Settings, Play, Square, RotateCcw, Database, Zap, TestTube, Shield } from 'lucide-react'
 import { simulateRoute } from '@/lib/pingSimulator'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { useAuthStore } from '@/lib/store'
+import { supabase } from '@/lib/supabase'
+import { useAppStore } from '@/lib/store'
 import { useRouter } from 'next/navigation'
 
 interface DeviceInventory {
@@ -39,10 +39,12 @@ interface SubscriptionAnalytics {
   avg_devices_per_sub: number
 }
 
+// Force dynamic rendering for admin page
+export const dynamic = 'force-dynamic'
+
 export default function AdminDashboard() {
-  const { user } = useAuthStore()
+  const { user, setUser } = useAppStore()
   const router = useRouter()
-  const supabase = createClientComponentClient()
   
   const [activeTab, setActiveTab] = useState('inventory')
   const [inventory, setInventory] = useState<DeviceInventory[]>([])

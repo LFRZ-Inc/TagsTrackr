@@ -430,7 +430,7 @@ export default function AccountPage() {
         supabase.from('users').select('*').eq('id', user.id).single(),
         fetch('/api/device/register'),
         fetch('/api/subscription/manage'),
-        supabase.from('ad_credits').select('balance').eq('user_id', user.id).single()
+        supabase.from('ad_credits').select('*').eq('user_id', user.id).single()
       ])
 
       if (userResponse.data) {
@@ -449,7 +449,17 @@ export default function AccountPage() {
       }
 
       if (creditsResponse.data) {
-        setAdCredits(prev => ({ ...prev, balance: creditsResponse.data.balance || 0 }))
+        setAdCredits(prev => prev ? { 
+          ...prev, 
+          credit_balance: creditsResponse.data.credit_balance || 0 
+        } : {
+          user_id: creditsResponse.data.user_id,
+          credit_balance: creditsResponse.data.credit_balance || 0,
+          total_earned: creditsResponse.data.total_earned || 0,
+          total_redeemed: creditsResponse.data.total_redeemed || 0,
+          daily_views_count: creditsResponse.data.daily_views_count || 0,
+          last_view_date: creditsResponse.data.last_view_date || null
+        })
       }
 
     } catch (error) {
@@ -485,7 +495,7 @@ export default function AccountPage() {
       {!userData?.is_premium && (
         <div className="bg-white border-b">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <AdBanner context="account" />
+            <AdBanner pageContext="account" />
           </div>
         </div>
       )}
@@ -545,7 +555,7 @@ export default function AccountPage() {
                     
                     <div className="text-center p-4 bg-gray-50 rounded-lg">
                       <DollarSign className="h-8 w-8 text-green-600 mx-auto mb-2" />
-                      <div className="text-2xl font-bold text-gray-900">${adCredits?.credit_balance.toFixed(2) || '0.00'}</div>
+                      <div className="text-2xl font-bold text-gray-900">${(adCredits?.credit_balance || 0).toFixed(2)}</div>
                       <div className="text-sm text-gray-600">Ad Credits</div>
                     </div>
                   </div>
@@ -734,22 +744,22 @@ export default function AccountPage() {
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                     <div className="text-center p-4 bg-green-50 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">${adCredits?.credit_balance.toFixed(2)}</div>
+                      <div className="text-2xl font-bold text-green-600">${(adCredits?.credit_balance || 0).toFixed(2)}</div>
                       <div className="text-sm text-gray-600">Available Balance</div>
                     </div>
                     
                     <div className="text-center p-4 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">${adCredits?.total_earned.toFixed(2)}</div>
+                      <div className="text-2xl font-bold text-blue-600">${(adCredits?.total_earned || 0).toFixed(2)}</div>
                       <div className="text-sm text-gray-600">Total Earned</div>
                     </div>
                     
                     <div className="text-center p-4 bg-purple-50 rounded-lg">
-                      <div className="text-2xl font-bold text-purple-600">${adCredits?.total_redeemed.toFixed(2)}</div>
+                      <div className="text-2xl font-bold text-purple-600">${(adCredits?.total_redeemed || 0).toFixed(2)}</div>
                       <div className="text-sm text-gray-600">Total Redeemed</div>
                     </div>
                   </div>
 
-                  {adCredits?.credit_balance >= 5 ? (
+                  {(adCredits?.credit_balance || 0) >= 5 ? (
                     <div className="bg-green-50 rounded-lg p-6">
                       <h3 className="font-semibold text-green-900 mb-3">Redeem Your Credits</h3>
                       <p className="text-green-800 text-sm mb-4">
