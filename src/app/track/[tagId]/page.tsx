@@ -6,7 +6,7 @@ import { MapPin, Battery, ArrowLeft, Clock, Signal, AlertTriangle, RefreshCw, Sh
 import { supabase } from '@/lib/supabase'
 import AdBanner from '@/components/ads/AdBanner'
 
-interface TagData {
+interface DeviceData {
   id: string
   tag_id: string
   name: string
@@ -14,7 +14,9 @@ interface TagData {
   is_active: boolean | null
   battery_level: number | null
   last_seen_at: string | null
-  status: string
+  type: string
+  adhesive: boolean | null
+  data_remaining_mb: number | null
   last_location?: {
     latitude: number
     longitude: number
@@ -40,7 +42,7 @@ interface ReportData {
 }
 
 export default function TrackTag({ params }: { params: { tagId: string } }) {
-  const [tagData, setTagData] = useState<TagData | null>(null)
+  const [tagData, setTagData] = useState<DeviceData | null>(null)
   const [recentPings, setRecentPings] = useState<GPSPing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -60,15 +62,15 @@ export default function TrackTag({ params }: { params: { tagId: string } }) {
     
     // Setup real-time subscription
     const subscription = supabase
-      .channel(`tag_${params.tagId}`)
+      .channel(`device_${params.tagId}`)
       .on('postgres_changes', 
         { 
           event: 'INSERT', 
           schema: 'public', 
-          table: 'gps_pings' 
+          table: 'device_locations' 
         }, 
         (payload) => {
-          console.log('New ping received:', payload)
+          console.log('New location received:', payload)
           if (payload.new) {
             handleNewPing(payload.new as GPSPing)
           }
@@ -86,15 +88,15 @@ export default function TrackTag({ params }: { params: { tagId: string } }) {
     
     // Update tag location
     if (tagData) {
-      setTagData(prev => ({
-        ...prev!,
+      setTagData((prev: DeviceData | null) => prev ? ({
+        ...prev,
         last_location: {
           latitude: newPing.latitude,
           longitude: newPing.longitude
         },
-        battery_level: newPing.battery_level || prev!.battery_level,
+        battery_level: newPing.battery_level || prev.battery_level,
         last_seen_at: newPing.timestamp || newPing.created_at
-      }))
+      }) : null)
     }
   }
 
@@ -102,27 +104,27 @@ export default function TrackTag({ params }: { params: { tagId: string } }) {
     try {
       setRefreshing(true)
       
-      // Fetch tag information
-      const { data: tag, error: tagError } = await supabase
-        .from('tags')
+      // Fetch device information
+      const { data: device, error: deviceError } = await supabase
+        .from('devices')
         .select('*')
         .eq('tag_id', params.tagId)
         .single()
 
-      if (tagError) throw tagError
+      if (deviceError) throw deviceError
 
-      // Fetch recent GPS pings
+      // Fetch recent GPS pings (device_locations table)
       const { data: pings, error: pingsError } = await supabase
-        .from('gps_pings')
+        .from('device_locations')
         .select('*')
-        .eq('tag_id', tag.id)
+        .eq('device_id', device.id)
         .order('timestamp', { ascending: false })
         .limit(10)
 
       if (pingsError) throw pingsError
 
       setTagData({
-        ...tag,
+        ...device,
         last_location: pings[0] ? {
           latitude: pings[0].latitude,
           longitude: pings[0].longitude
@@ -146,13 +148,12 @@ export default function TrackTag({ params }: { params: { tagId: string } }) {
     
     try {
       const { error } = await supabase
-        .from('reports')
+        .from('found_reports')
         .insert({
-          tag_id: tagData!.id,
-          type: reportData.type,
-          title: `${reportData.type} - ${tagData!.name}`,
+          device_id: tagData!.id,
+          report_type: reportData.type,
           description: reportData.description,
-          contact_info: { contact: reportData.contact_info },
+          contact_info: reportData.contact_info,
           reward_amount: reportData.reward_amount,
           status: 'open'
         })
