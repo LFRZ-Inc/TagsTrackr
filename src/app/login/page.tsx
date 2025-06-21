@@ -13,6 +13,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [resendingConfirmation, setResendingConfirmation] = useState(false)
+  const [showResendButton, setShowResendButton] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -25,9 +27,11 @@ export default function LoginPage() {
       switch (urlError) {
         case 'confirmation_failed':
           setError('Email confirmation failed. Please try signing up again or contact support.')
+          setShowResendButton(true)
           break
         case 'no_code':
           setError('Invalid confirmation link. Please check your email for the correct link.')
+          setShowResendButton(true)
           break
         default:
           setError('An error occurred during authentication.')
@@ -58,7 +62,14 @@ export default function LoginPage() {
       })
 
       if (error) {
-        setError(error.message)
+        // Check if it's an email confirmation error
+        if (error.message.includes('Email not confirmed') || error.message.includes('confirm')) {
+          setError(error.message)
+          setShowResendButton(true)
+        } else {
+          setError(error.message)
+          setShowResendButton(false)
+        }
         return
       }
 
@@ -69,6 +80,36 @@ export default function LoginPage() {
       setError('An unexpected error occurred')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleResendConfirmation = async () => {
+    if (!email) {
+      setError('Please enter your email address first')
+      return
+    }
+
+    setResendingConfirmation(true)
+    setError('')
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`
+        }
+      })
+
+      if (error) {
+        setError(error.message)
+      } else {
+        setMessage(`Confirmation email sent to ${email}. Please check your inbox and spam folder.`)
+      }
+    } catch (err) {
+      setError('Failed to resend confirmation email')
+    } finally {
+      setResendingConfirmation(false)
     }
   }
 
@@ -108,9 +149,21 @@ export default function LoginPage() {
         <div className="bg-white py-8 px-6 shadow-xl rounded-lg">
           <form className="space-y-6" onSubmit={handleLogin}>
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm flex items-center">
-                <AlertCircle className="h-4 w-4 mr-2" />
-                {error}
+              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+                <div className="flex items-center">
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  {error}
+                </div>
+                {showResendButton && (
+                  <button
+                    type="button"
+                    onClick={handleResendConfirmation}
+                    disabled={resendingConfirmation}
+                    className="mt-2 text-primary-600 hover:text-primary-500 underline text-sm"
+                  >
+                    {resendingConfirmation ? 'Sending...' : 'Resend confirmation email'}
+                  </button>
+                )}
               </div>
             )}
             
@@ -189,10 +242,22 @@ export default function LoginPage() {
                 </label>
               </div>
 
-              <div className="text-sm">
-                <a href="#" className="font-medium text-primary-600 hover:text-primary-500">
-                  Forgot your password?
-                </a>
+              <div className="text-sm space-y-1">
+                <div>
+                  <a href="#" className="font-medium text-primary-600 hover:text-primary-500">
+                    Forgot your password?
+                  </a>
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleResendConfirmation}
+                    disabled={resendingConfirmation || !email}
+                    className="font-medium text-primary-600 hover:text-primary-500 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {resendingConfirmation ? 'Sending...' : 'Resend confirmation email'}
+                  </button>
+                </div>
               </div>
             </div>
 
