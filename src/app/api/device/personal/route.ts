@@ -53,8 +53,7 @@ export async function POST(request: NextRequest) {
       device_name, 
       device_model, 
       device_os,
-      hardware_fingerprint,
-      is_current_device = false
+      hardware_fingerprint
     } = body
 
     // Validate device type
@@ -63,30 +62,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid device type' }, { status: 400 })
     }
 
-    // Check if device with this hardware fingerprint already exists for this user
-    if (hardware_fingerprint) {
-      const { data: existingDevice } = await supabase
-        .from('devices')
-        .select('id, tag_id, device_type, device_model, device_os')
-        .eq('owner_id', user.id)
-        .eq('hardware_fingerprint', hardware_fingerprint)
-        .single()
-
-      if (existingDevice) {
-        return NextResponse.json({
-          success: true,
-          device_id: existingDevice.id,
-          message: `This ${existingDevice.device_type} (${existingDevice.tag_id}) is already registered for this hardware`,
-          existing: true,
-          device_info: existingDevice
-        })
-      }
+    if (!hardware_fingerprint) {
+      return NextResponse.json({ error: 'Hardware fingerprint is required' }, { status: 400 })
     }
 
     // Register personal device using stored function
     const { data, error } = await supabase.rpc('register_personal_device', {
       p_device_type: device_type,
       p_device_name: device_name,
+      p_hardware_fingerprint: hardware_fingerprint,
       p_device_model: device_model,
       p_device_os: device_os
     })
@@ -96,26 +80,11 @@ export async function POST(request: NextRequest) {
       throw error
     }
 
-    // Update the device with hardware fingerprint if provided
-    if (hardware_fingerprint && data) {
-      const { error: updateError } = await supabase
-        .from('devices')
-        .update({ 
-          hardware_fingerprint,
-          is_current_device: is_current_device
-        })
-        .eq('id', data)
-        .eq('owner_id', user.id)
-
-      if (updateError) {
-        console.error('Error updating device fingerprint:', updateError)
-      }
-    }
-
     return NextResponse.json({
       success: true,
-      device_id: data,
-      message: `${device_type} registered successfully`
+      device_id: data.device_id,
+      action: data.action,
+      message: `${device_type} ${data.action === 'created_new' ? 'registered' : 'updated'} successfully`
     })
 
   } catch (error) {
@@ -141,12 +110,11 @@ export async function GET(request: NextRequest) {
     const hardwareFingerprint = url.searchParams.get('hardware_fingerprint')
 
     let query = supabase
-      .from('devices')
+      .from('personal_devices')
       .select(`
         id,
-        tag_id,
-        type,
         device_type,
+        device_name,
         device_model,
         device_os,
         sharing_enabled,
@@ -156,10 +124,10 @@ export async function GET(request: NextRequest) {
         last_ping_at,
         created_at,
         hardware_fingerprint,
-        is_current_device
+        privacy_mode
       `)
-      .eq('owner_id', user.id)
-      .in('device_type', ['phone', 'tablet', 'watch', 'laptop'])
+      .eq('user_id', user.id)
+      .eq('is_active', true)
 
     // Filter for current device only if requested
     if (currentOnly && hardwareFingerprint) {
@@ -195,34 +163,45 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { device_id, location_sharing_enabled } = body
+    const { device_id, location_sharing_active, privacy_mode } = body
 
     // Verify user owns this device
     const { data: device, error: deviceError } = await supabase
-      .from('devices')
-      .select('owner_id')
+      .from('personal_devices')
+      .select('user_id')
       .eq('id', device_id)
       .single()
 
-    if (deviceError || device?.owner_id !== user.id) {
+    if (deviceError || device?.user_id !== user.id) {
       return NextResponse.json({ error: 'Device not found or access denied' }, { status: 403 })
     }
 
-    // Toggle location sharing using stored function
-    const { data, error } = await supabase.rpc('toggle_location_sharing', {
-      p_device_id: device_id,
-      p_enabled: location_sharing_enabled
-    })
+    // Update device settings
+    const updateData: any = {}
+    if (location_sharing_active !== undefined) {
+      updateData.location_sharing_active = location_sharing_active
+    }
+    if (privacy_mode !== undefined) {
+      updateData.privacy_mode = privacy_mode
+    }
+
+    const { data: updatedDevice, error } = await supabase
+      .from('personal_devices')
+      .update(updateData)
+      .eq('id', device_id)
+      .eq('user_id', user.id)
+      .select()
+      .single()
 
     if (error) throw error
 
     return NextResponse.json({
       success: true,
-      data: data
+      device: updatedDevice
     })
 
   } catch (error) {
-    console.error('Error updating device sharing:', error)
+    console.error('Error updating device:', error)
     return NextResponse.json(
       { error: 'Failed to update device' },
       { status: 500 }

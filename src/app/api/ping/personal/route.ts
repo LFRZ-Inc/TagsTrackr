@@ -76,8 +76,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Process location ping using stored function
-    const { data, error } = await supabase.rpc('process_location_ping', {
+    // Record location ping using stored function
+    const { data, error } = await supabase.rpc('record_location_ping', {
       p_device_id: device_id,
       p_latitude: latitude,
       p_longitude: longitude,
@@ -96,7 +96,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: data
+      ping_id: data,
+      message: 'Location recorded successfully'
     })
 
   } catch (error) {
@@ -125,9 +126,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'device_id required' }, { status: 400 })
     }
 
+    // Verify user owns this device first
+    const { data: device, error: deviceError } = await supabase
+      .from('personal_devices')
+      .select('user_id')
+      .eq('id', deviceId)
+      .single()
+
+    if (deviceError || device?.user_id !== user.id) {
+      return NextResponse.json({ error: 'Device not found or access denied' }, { status: 403 })
+    }
+
     // Get recent location history for device
     const { data: locations, error } = await supabase
-      .from('device_locations')
+      .from('location_pings')
       .select(`
         id,
         latitude,
@@ -136,10 +148,8 @@ export async function GET(request: NextRequest) {
         altitude,
         speed,
         heading,
-        source_device_type,
-        accuracy_radius,
         location_source,
-        is_background_ping,
+        is_background,
         recorded_at,
         created_at
       `)
@@ -148,17 +158,6 @@ export async function GET(request: NextRequest) {
       .limit(limit)
 
     if (error) throw error
-
-    // Verify user owns this device
-    const { data: device, error: deviceError } = await supabase
-      .from('devices')
-      .select('owner_id')
-      .eq('id', deviceId)
-      .single()
-
-    if (deviceError || device?.owner_id !== user.id) {
-      return NextResponse.json({ error: 'Device not found or access denied' }, { status: 403 })
-    }
 
     return NextResponse.json({
       success: true,
