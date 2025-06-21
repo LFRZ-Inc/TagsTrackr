@@ -5,6 +5,7 @@ import { MapPin } from 'lucide-react'
 
 export default function AdminResetPage() {
   const [loading, setLoading] = useState(false)
+  const [confirmLoading, setConfirmLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -38,6 +39,39 @@ export default function AdminResetPage() {
       setError('Failed to reset user data')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleConfirmUser = async () => {
+    setConfirmLoading(true)
+    setError('')
+    setMessage('')
+
+    try {
+      const response = await fetch('/api/admin/confirm-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'luisdrod750@gmail.com',
+          adminKey: 'tagstrackr-admin-reset-2024'
+        }),
+      })
+
+      const result = await response.json()
+      
+      if (!response.ok) {
+        setError(result.error || 'Confirmation failed')
+        return
+      }
+
+      setMessage('✅ User confirmed and profile created! You can now log in.')
+      
+    } catch (err) {
+      setError('Failed to confirm user')
+    } finally {
+      setConfirmLoading(false)
     }
   }
 
@@ -91,13 +125,28 @@ export default function AdminResetPage() {
               )}
             </button>
 
+            <button
+              onClick={handleConfirmUser}
+              disabled={confirmLoading}
+              className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {confirmLoading ? (
+                <div className="flex items-center">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Confirming...
+                </div>
+              ) : (
+                'Confirm User & Create Profile'
+              )}
+            </button>
+
             {message && (
               <div className="mt-4 space-y-2">
                 <a
-                  href="/signup"
+                  href={message.includes('confirmed') ? "/login" : "/signup"}
                   className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
                 >
-                  Go to Signup
+                  {message.includes('confirmed') ? "Go to Login" : "Go to Signup"}
                 </a>
               </div>
             )}
