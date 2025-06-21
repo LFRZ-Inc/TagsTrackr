@@ -64,7 +64,8 @@ export default function SignupPage() {
         options: {
           data: {
             full_name: formData.fullName
-          }
+          },
+          emailRedirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`
         }
       })
 
@@ -106,7 +107,7 @@ export default function SignupPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`
+          redirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`
         }
       })
       if (error) setError(error.message)

@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { MapPin, Eye, EyeOff, Mail, Lock } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { MapPin, Eye, EyeOff, Mail, Lock, CheckCircle, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
@@ -12,12 +12,44 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    // Check for error messages from URL params (like auth callback)
+    const urlError = searchParams.get('error')
+    const urlMessage = searchParams.get('message')
+    
+    if (urlError) {
+      switch (urlError) {
+        case 'confirmation_failed':
+          setError('Email confirmation failed. Please try signing up again or contact support.')
+          break
+        case 'no_code':
+          setError('Invalid confirmation link. Please check your email for the correct link.')
+          break
+        default:
+          setError('An error occurred during authentication.')
+      }
+    }
+    
+    if (urlMessage) {
+      switch (urlMessage) {
+        case 'email_confirmed':
+          setMessage('Email confirmed successfully! You can now sign in.')
+          break
+        default:
+          setMessage(urlMessage)
+      }
+    }
+  }, [searchParams])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setMessage('')
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -45,7 +77,7 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`
+          redirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`
         }
       })
       if (error) setError(error.message)
@@ -76,8 +108,16 @@ export default function LoginPage() {
         <div className="bg-white py-8 px-6 shadow-xl rounded-lg">
           <form className="space-y-6" onSubmit={handleLogin}>
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm flex items-center">
+                <AlertCircle className="h-4 w-4 mr-2" />
                 {error}
+              </div>
+            )}
+            
+            {message && (
+              <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-md text-sm flex items-center">
+                <CheckCircle className="h-4 w-4 mr-2" />
+                {message}
               </div>
             )}
 
