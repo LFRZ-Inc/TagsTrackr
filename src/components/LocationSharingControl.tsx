@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MapPin, Smartphone, Tablet, Watch, Laptop, ToggleLeft, ToggleRight, AlertCircle, CheckCircle } from 'lucide-react';
+import { MapPin, Smartphone, Tablet, Watch, Laptop, ToggleLeft, ToggleRight, AlertCircle, CheckCircle, Info } from 'lucide-react';
 
 interface Device {
   id: string;
@@ -45,6 +45,7 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
   const [locationWatchers, setLocationWatchers] = useState<Record<string, number>>({});
   const [locationSupported, setLocationSupported] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   const personalDevices = devices.filter(d => ['phone', 'tablet', 'watch', 'laptop'].includes(d.device_type));
 
@@ -65,28 +66,49 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
       states[device.id] = device.location_sharing_active || false;
     });
     setSharingStates(states);
-  }, [devices]);
+  }, [personalDevices]);
+
+  const getLocationErrorMessage = (error: GeolocationPositionError): string => {
+    switch (error.code) {
+      case error.PERMISSION_DENIED:
+        return 'Location access denied. Please allow location access in your browser settings and try again.';
+      case error.POSITION_UNAVAILABLE:
+        return 'Location information unavailable. Please check your device\'s location settings.';
+      case error.TIMEOUT:
+        return 'Location request timed out. Please try again.';
+      default:
+        return 'Unable to get location. Please try again.';
+    }
+  };
 
   const requestLocationPermission = async (): Promise<boolean> => {
+    setErrorMessage('');
+    
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         () => {
           setPermissionStatus('granted');
+          setErrorMessage('');
           resolve(true);
         },
         (error) => {
-          console.error('Location permission denied:', error);
+          console.error('Location permission error:', error);
+          const message = getLocationErrorMessage(error);
+          setErrorMessage(message);
           setPermissionStatus('denied');
           resolve(false);
         },
-        { timeout: 10000 }
+        { 
+          timeout: 15000,
+          enableHighAccuracy: false // Use less battery for permission check
+        }
       );
     });
   };
 
   const startLocationSharing = async (deviceId: string) => {
     if (!locationSupported) {
-      alert('Geolocation is not supported by this browser');
+      setErrorMessage('Geolocation is not supported by this browser');
       return;
     }
 
@@ -94,8 +116,7 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
     if (permissionStatus !== 'granted') {
       const granted = await requestLocationPermission();
       if (!granted) {
-        alert('Location permission is required to share your location');
-        return;
+        return; // Error message already set
       }
     }
 
@@ -105,7 +126,7 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
         const { latitude, longitude, accuracy, altitude, speed, heading } = position.coords;
         
         try {
-          await fetch('/api/ping/personal', {
+          const response = await fetch('/api/ping/personal', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -120,12 +141,22 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
               is_background: false
             })
           });
+
+          if (!response.ok) {
+            throw new Error('Failed to send location update');
+          }
+
+          // Clear any previous errors on successful ping
+          setErrorMessage('');
         } catch (error) {
           console.error('Error sending location ping:', error);
+          setErrorMessage('Failed to send location update. Please check your connection.');
         }
       },
       (error) => {
-        console.error('Location error:', error);
+        console.error('Location tracking error:', error);
+        const message = getLocationErrorMessage(error);
+        setErrorMessage(message);
         handleToggleSharing(deviceId, false);
       },
       {
@@ -151,6 +182,8 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
   };
 
   const handleToggleSharing = async (deviceId: string, enabled: boolean) => {
+    setErrorMessage('');
+    
     try {
       // Update server state
       const response = await fetch('/api/device/personal', {
@@ -177,11 +210,11 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
         
         onDeviceUpdate();
       } else {
-        alert(data.error || 'Failed to update sharing settings');
+        setErrorMessage(data.error || 'Failed to update sharing settings');
       }
     } catch (error) {
       console.error('Error toggling location sharing:', error);
-      alert('Failed to update sharing settings');
+      setErrorMessage('Failed to update sharing settings. Please check your connection.');
     }
   };
 
@@ -214,15 +247,39 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
         )}
       </div>
 
+      {/* Error Message */}
+      {errorMessage && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+          <div className="flex items-start">
+            <AlertCircle className="h-5 w-5 text-red-600 mr-2 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-red-800">Location Error</p>
+              <p className="text-sm text-red-700 mt-1">{errorMessage}</p>
+              {permissionStatus === 'denied' && (
+                <div className="mt-2 text-xs text-red-600">
+                  <p className="font-medium">To enable location sharing:</p>
+                  <ol className="list-decimal list-inside mt-1 space-y-1">
+                    <li>Click the location icon in your browser's address bar</li>
+                    <li>Select "Allow" for location access</li>
+                    <li>Refresh the page and try again</li>
+                  </ol>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Permission Status */}
-      {locationSupported && permissionStatus !== 'granted' && (
+      {locationSupported && permissionStatus !== 'granted' && !errorMessage && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-          <div className="flex items-center">
-            <AlertCircle className="h-5 w-5 text-yellow-600 mr-2" />
+          <div className="flex items-start">
+            <Info className="h-5 w-5 text-yellow-600 mr-2 mt-0.5 flex-shrink-0" />
             <div>
               <p className="text-sm font-medium text-yellow-800">Location Permission Required</p>
-              <p className="text-xs text-yellow-700">
-                Allow location access to enable device tracking from this browser
+              <p className="text-sm text-yellow-700 mt-1">
+                Allow location access to enable device tracking from this browser. 
+                Your browser will ask for permission when you enable sharing.
               </p>
             </div>
           </div>
@@ -272,8 +329,9 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
                 
                 <button
                   onClick={() => handleToggleSharing(device.id, !isSharing)}
-                  disabled={!locationSupported || permissionStatus === 'denied'}
-                  className="flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!locationSupported}
+                  className="flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title={!locationSupported ? 'Location not supported in this browser' : ''}
                 >
                   {isSharing ? (
                     <ToggleRight className="h-6 w-6 text-green-600" />
@@ -295,7 +353,7 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
       {/* Info Box */}
       <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
         <div className="flex items-start">
-          <CheckCircle className="h-5 w-5 text-blue-600 mr-2 mt-0.5" />
+          <CheckCircle className="h-5 w-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
           <div className="text-sm text-blue-800">
             <p className="font-medium mb-1">How it works:</p>
             <ul className="space-y-1 text-xs">

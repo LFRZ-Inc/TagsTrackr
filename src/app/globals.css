@@ -10,22 +10,29 @@
   --background-end-rgb: 255, 255, 255;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+/* Force light mode for now - remove dark mode that was causing white text issues */
+html {
+  color-scheme: light;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
+  color: rgb(0, 0, 0); /* Force dark text */
   background: linear-gradient(
       to bottom,
       transparent,
-      rgb(var(--background-end-rgb))
+      rgb(255, 255, 255)
     )
-    rgb(var(--background-start-rgb));
+    rgb(214, 219, 220);
+}
+
+/* Ensure all input elements have proper contrast */
+input, textarea, select {
+  color: #111827 !important; /* Force dark text in inputs */
+  background-color: white !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #6b7280 !important; /* Force gray placeholder text */
 }
 
 @layer utilities {

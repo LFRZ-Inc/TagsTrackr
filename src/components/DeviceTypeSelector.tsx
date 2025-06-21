@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Smartphone, Tablet, Watch, Laptop, Plus, X } from 'lucide-react';
+import { Smartphone, Tablet, Watch, Laptop, Plus, X, AlertCircle } from 'lucide-react';
 
 interface DeviceTypeSelectorProps {
   onDeviceAdded: () => void;
@@ -46,42 +46,53 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
   const [deviceModel, setDeviceModel] = useState('');
   const [deviceOS, setDeviceOS] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>('');
 
   const handleAddDevice = async () => {
-    if (!selectedType || !deviceName) {
-      alert('Please select a device type and enter a name');
+    if (!selectedType || !deviceName.trim()) {
+      setError('Please select a device type and enter a name');
       return;
     }
 
     setLoading(true);
+    setError('');
+    
     try {
       const response = await fetch('/api/device/personal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           device_type: selectedType,
-          device_name: deviceName,
-          device_model: deviceModel || undefined,
-          device_os: deviceOS || undefined
+          device_name: deviceName.trim(),
+          device_model: deviceModel.trim() || undefined,
+          device_os: deviceOS.trim() || undefined
         })
       });
 
       const data = await response.json();
       
       if (response.ok) {
-        alert(data.message);
+        // Success - close modal and reset form
         setIsOpen(false);
         setSelectedType('');
         setDeviceName('');
         setDeviceModel('');
         setDeviceOS('');
+        setError('');
         onDeviceAdded();
+        
+        // Show success message
+        alert(`✅ ${deviceName} has been added successfully!\n\nNote: Location sharing is disabled by default. You can enable it from the dashboard when ready.`);
       } else {
-        alert(data.error || 'Failed to add device');
+        if (response.status === 401) {
+          setError('Please log in to add devices');
+        } else {
+          setError(data.error || 'Failed to add device. Please try again.');
+        }
       }
     } catch (error) {
       console.error('Error adding device:', error);
-      alert('Failed to add device');
+      setError('Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -89,6 +100,15 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
 
   const getDeviceInfo = () => {
     return deviceTypes.find(d => d.type === selectedType);
+  };
+
+  const handleClose = () => {
+    setIsOpen(false);
+    setSelectedType('');
+    setDeviceName('');
+    setDeviceModel('');
+    setDeviceOS('');
+    setError('');
   };
 
   if (!isOpen) {
@@ -109,14 +129,25 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-xl font-semibold text-gray-900">Add Personal Device</h2>
           <button
-            onClick={() => setIsOpen(false)}
-            className="text-gray-400 hover:text-gray-600"
+            onClick={handleClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
           >
             <X className="h-6 w-6" />
           </button>
         </div>
 
         <div className="p-6 space-y-6">
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-4 flex items-start">
+              <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 mr-3 flex-shrink-0" />
+              <div>
+                <h4 className="font-medium text-red-800">Error</h4>
+                <p className="text-sm text-red-700 mt-1">{error}</p>
+              </div>
+            </div>
+          )}
+
           {/* Device Type Selection */}
           <div>
             <h3 className="text-lg font-medium text-gray-900 mb-4">Select Device Type</h3>
@@ -163,7 +194,8 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
                   value={deviceName}
                   onChange={(e) => setDeviceName(e.target.value)}
                   placeholder={`My ${getDeviceInfo()?.name}`}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500"
+                  style={{ color: '#111827' }} // Explicit dark text color
                 />
               </div>
 
@@ -176,7 +208,8 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
                   value={deviceModel}
                   onChange={(e) => setDeviceModel(e.target.value)}
                   placeholder="e.g., iPhone 15 Pro, Galaxy S24"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500"
+                  style={{ color: '#111827' }} // Explicit dark text color
                 />
               </div>
 
@@ -189,7 +222,8 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
                   value={deviceOS}
                   onChange={(e) => setDeviceOS(e.target.value)}
                   placeholder="e.g., iOS 17, Android 14, Windows 11"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500"
+                  style={{ color: '#111827' }} // Explicit dark text color
                 />
               </div>
 
@@ -203,21 +237,30 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
                   <li>• You can remove this device anytime</li>
                 </ul>
               </div>
+
+              {/* Location Permission Info */}
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-4">
+                <h4 className="font-medium text-amber-900 mb-2">📍 Location Sharing</h4>
+                <p className="text-sm text-amber-800">
+                  To enable location tracking for this device, you'll need to grant location permission in your browser. 
+                  This will be requested when you turn on location sharing from the dashboard.
+                </p>
+              </div>
             </div>
           )}
         </div>
 
         <div className="flex space-x-3 p-6 border-t bg-gray-50">
           <button
-            onClick={() => setIsOpen(false)}
-            className="flex-1 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            onClick={handleClose}
+            className="flex-1 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleAddDevice}
-            disabled={!selectedType || !deviceName || loading}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!selectedType || !deviceName.trim() || loading}
+            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {loading ? 'Adding...' : 'Add Device'}
           </button>
