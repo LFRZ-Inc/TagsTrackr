@@ -1,9 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+// Force dynamic rendering for this API route
+export const dynamic = 'force-dynamic'
+
+function createSupabaseClient() {
+  const cookieStore = cookies()
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: any) {
+          try {
+            cookieStore.set({ name, value, ...options })
+          } catch {
+            // The `set` method was called from a Server Component.
+          }
+        },
+        remove(name: string, options: any) {
+          try {
+            cookieStore.set({ name, value: '', ...options })
+          } catch {
+            // The `delete` method was called from a Server Component.
+          }
+        },
+      },
+    }
+  )
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createSupabaseServerClient()
+    const supabase = createSupabaseClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
@@ -11,11 +44,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { tagId, shareWithEmail, permissions = 'read', expiresInDays } = body;
+    const { deviceId, shareWithEmail, permissions = 'read', expiresInDays } = body;
 
-    if (!tagId || !shareWithEmail) {
+    if (!deviceId || !shareWithEmail) {
       return NextResponse.json(
-        { error: 'Tag ID and share email are required' },
+        { error: 'Device ID and share email are required' },
         { status: 400 }
       );
     }
@@ -30,10 +63,10 @@ export async function POST(request: NextRequest) {
 
     // Check if the user owns this device
     const { data: device, error: deviceError } = await supabase
-      .from('devices')
-      .select('id, owner_id, tag_id')
-      .eq('id', tagId)
-      .eq('owner_id', user.id)
+      .from('personal_devices')
+      .select('id, user_id, device_name')
+      .eq('id', deviceId)
+      .eq('user_id', user.id)
       .single();
 
     if (deviceError || !device) {
@@ -61,14 +94,14 @@ export async function POST(request: NextRequest) {
     const { data: existingShare } = await supabase
       .from('tag_shares')
       .select('id')
-      .eq('tag_id', tagId)
+      .eq('device_id', deviceId)
       .eq('shared_with_user_id', shareWithUser.id)
       .eq('is_active', true)
       .single();
 
     if (existingShare) {
       return NextResponse.json(
-        { error: 'Tag is already shared with this user' },
+        { error: 'Device is already shared with this user' },
         { status: 409 }
       );
     }
@@ -84,7 +117,7 @@ export async function POST(request: NextRequest) {
     const { data: share, error: shareError } = await supabase
       .from('tag_shares')
       .insert({
-        tag_id: tagId,
+        device_id: deviceId,
         owner_id: user.id,
         shared_with_user_id: shareWithUser.id,
         permissions,
@@ -92,7 +125,7 @@ export async function POST(request: NextRequest) {
       })
       .select(`
         *,
-        devices!inner(tag_id, type),
+        personal_devices!inner(device_name, device_type),
         users!tag_shares_shared_with_user_id_fkey(email, id)
       `)
       .single();
@@ -108,7 +141,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       share,
-      message: `Tag ${device.tag_id} shared successfully with ${shareWithEmail}!`
+      message: `Device ${device.device_name} shared successfully with ${shareWithEmail}!`
     });
 
   } catch (error) {
@@ -123,7 +156,7 @@ export async function POST(request: NextRequest) {
 // Get shares for user's devices
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createSupabaseServerClient()
+    const supabase = createSupabaseClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
@@ -135,7 +168,7 @@ export async function GET(request: NextRequest) {
       .from('tag_shares')
       .select(`
         *,
-        devices!inner(tag_id, type, is_active),
+        personal_devices!inner(device_name, device_type, is_active),
         users!tag_shares_shared_with_user_id_fkey(email, id)
       `)
       .eq('owner_id', user.id)
@@ -155,7 +188,7 @@ export async function GET(request: NextRequest) {
       .from('tag_shares')
       .select(`
         *,
-        devices!inner(tag_id, type, is_active),
+        personal_devices!inner(device_name, device_type, is_active),
         users!tag_shares_owner_id_fkey(email, id)
       `)
       .eq('shared_with_user_id', user.id)
@@ -187,7 +220,7 @@ export async function GET(request: NextRequest) {
 // Revoke or update a share
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createSupabaseServerClient()
+    const supabase = createSupabaseClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {

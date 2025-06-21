@@ -85,8 +85,8 @@ export async function POST(request: NextRequest) {
       p_altitude: altitude,
       p_speed: speed,
       p_heading: heading,
-      p_source: source,
-      p_is_background: is_background
+      p_location_source: source,
+      p_is_background_ping: is_background
     })
 
     if (error) {

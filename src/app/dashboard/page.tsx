@@ -34,6 +34,7 @@ import AdBanner from '@/components/ads/AdBanner'
 import InteractiveMap from '@/components/InteractiveMap'
 import DeviceTypeSelector from '@/components/DeviceTypeSelector'
 import LocationSharingControl from '@/components/LocationSharingControl'
+import FamilySharing from '@/components/FamilySharing'
 import AuthDebugger from '@/components/AuthDebugger'
 
 interface Device {
@@ -99,6 +100,7 @@ export default function Dashboard() {
   const [groupingDevice, setGroupingDevice] = useState<string | null>(null)
   const [realTimeEnabled, setRealTimeEnabled] = useState(true)
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null)
+  const [activeTab, setActiveTab] = useState<'devices' | 'sharing' | 'analytics'>('devices')
 
   const router = useRouter()
 
@@ -655,7 +657,57 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Main Content */}
+        {/* Navigation Tabs */}
+        <div className="bg-white rounded-lg shadow mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8 px-6">
+              <button
+                onClick={() => setActiveTab('devices')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'devices'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center">
+                  <MapPin className="h-5 w-5 mr-2" />
+                  Devices ({filteredDevices.length})
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('sharing')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'sharing'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center">
+                  <User className="h-5 w-5 mr-2" />
+                  Family Sharing
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'analytics'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center">
+                  <BarChart3 className="h-5 w-5 mr-2" />
+                  Analytics
+                </div>
+              </button>
+            </nav>
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'devices' && (
+          <>
+            {/* Main Content */}
         {viewMode === 'map' ? (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="h-96">
@@ -788,6 +840,33 @@ export default function Dashboard() {
               })}
             </div>
           )
+        )}
+          </>
+        )}
+
+        {/* Family Sharing Tab */}
+        {activeTab === 'sharing' && (
+          <FamilySharing 
+            devices={devices.map(device => ({
+              id: device.id,
+              device_name: device.name || device.tag_id,
+              device_type: device.device_type
+            }))}
+            onRefresh={fetchDevices}
+          />
+        )}
+
+        {/* Analytics Tab */}
+        {activeTab === 'analytics' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="text-center py-12">
+              <BarChart3 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-medium text-gray-900 mb-2">Analytics Coming Soon</h3>
+              <p className="text-gray-600">
+                Movement analytics, location heatmaps, and usage statistics will be available here.
+              </p>
+            </div>
+          </div>
         )}
 
         {/* Group Modal */}
