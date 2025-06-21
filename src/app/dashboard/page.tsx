@@ -118,11 +118,11 @@ export default function Dashboard() {
             { 
               event: '*', 
               schema: 'public', 
-              table: 'devices',
-              filter: `owner_id=eq.${user.id}`
+              table: 'personal_devices',
+              filter: `user_id=eq.${user.id}`
             }, 
             (payload) => {
-              console.log('Device update received:', payload)
+              console.log('Personal device update received:', payload)
               fetchDevices()
             }
           )
@@ -130,7 +130,7 @@ export default function Dashboard() {
             { 
               event: 'INSERT', 
               schema: 'public', 
-              table: 'device_locations'
+              table: 'location_pings'
             }, 
             (payload) => {
               console.log('New location ping received:', payload)
@@ -225,42 +225,94 @@ export default function Dashboard() {
     try {
       setRefreshing(true)
       
-      // Fetch all devices (GPS tags and personal devices) with latest location data
-      const { data: devicesData, error: devicesError } = await supabase
-        .from('devices')
+      // Fetch personal devices with latest location data
+      const { data: personalDevicesData, error: personalDevicesError } = await supabase
+        .from('personal_devices')
         .select(`
           *,
-          latest_location:device_locations!device_locations_device_id_fkey(
+          latest_location:location_pings!location_pings_device_id_fkey(
             latitude,
             longitude,
             recorded_at
           )
         `)
-        .eq('owner_id', user.id)
+        .eq('user_id', user.id)
+        .eq('is_active', true)
         .order('created_at', { ascending: false })
 
-      if (devicesError) throw devicesError
+      if (personalDevicesError) throw personalDevicesError
 
-      // Process devices to include current location and normalize data
-      const processedDevices = devicesData?.map(device => ({
-        ...device,
-        name: device.tag_id, // Use tag_id as display name
+      // Fetch legacy GPS tags if any exist (for backward compatibility)
+      const { data: gpsTagsData, error: gpsTagsError } = await supabase
+        .from('tags')
+        .select(`
+          *,
+          latest_location:tag_pings!tag_pings_tag_id_fkey(
+            latitude,
+            longitude,
+            recorded_at
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+
+      // Ignore GPS tags error if table doesn't exist (expected for fresh installs)
+      const gpsDevices = gpsTagsData?.map(tag => ({
+        id: tag.id,
+        tag_id: tag.tag_id,
+        name: tag.tag_id,
+        type: 'standard',
+        device_type: 'gps_tag',
+        device_model: undefined,
+        device_os: undefined,
+        description: tag.description,
+        is_active: tag.is_active,
+        battery_level: tag.battery_level,
+        last_seen_at: tag.latest_location?.[0]?.recorded_at || tag.last_ping_at,
+        last_ping_at: tag.last_ping_at,
+        group_name: null,
+        sharing_enabled: false,
+        location_sharing_active: false,
+        current_location: tag.latest_location?.[0] ? {
+          latitude: tag.latest_location[0].latitude,
+          longitude: tag.latest_location[0].longitude
+        } : undefined
+      })) || []
+
+      // Process personal devices to include current location and normalize data
+      const personalDevices = personalDevicesData?.map(device => ({
+        id: device.id,
+        tag_id: device.device_name || `${device.device_type}-${device.id.slice(0, 8)}`,
+        name: device.device_name,
+        type: 'standard',
+        device_type: device.device_type,
+        device_model: device.device_model || undefined,
+        device_os: device.device_os || undefined,
+        description: `${device.device_type} - ${device.device_model || 'Unknown Model'}`,
+        is_active: device.is_active,
+        battery_level: device.battery_level,
+        last_seen_at: device.latest_location?.[0]?.recorded_at || device.last_ping_at,
+        last_ping_at: device.last_ping_at,
+        group_name: null,
+        sharing_enabled: device.sharing_enabled || false,
+        location_sharing_active: device.location_sharing_active || false,
         current_location: device.latest_location?.[0] ? {
           latitude: device.latest_location[0].latitude,
           longitude: device.latest_location[0].longitude
-        } : undefined,
-        last_seen_at: device.latest_location?.[0]?.recorded_at || device.last_ping_at
+        } : undefined
       })) || []
 
-      setDevices(processedDevices)
-      
-      // Calculate stats
-      const totalDevices = processedDevices.length
-      const activeDevices = processedDevices.filter(device => device.is_active).length
-      const lowBatteryDevices = processedDevices.filter(device => (device.battery_level ?? 100) < 20).length
-      const offlineDevices = processedDevices.filter(device => !device.is_active).length
-      const gpsTagsCount = processedDevices.filter(device => device.device_type === 'gps_tag').length
-      const personalDevicesCount = processedDevices.filter(device => ['phone', 'tablet', 'watch', 'laptop'].includes(device.device_type)).length
+             // Combine all devices
+       const allDevices = [...personalDevices, ...gpsDevices]
+       setDevices(allDevices)
+       
+       // Calculate stats
+       const totalDevices = allDevices.length
+       const activeDevices = allDevices.filter(device => device.is_active).length
+       const lowBatteryDevices = allDevices.filter(device => (device.battery_level ?? 100) < 20).length
+       const offlineDevices = allDevices.filter(device => !device.is_active).length
+       const gpsTagsCount = allDevices.filter(device => device.device_type === 'gps_tag').length
+       const personalDevicesCount = allDevices.filter(device => ['phone', 'tablet', 'watch', 'laptop'].includes(device.device_type)).length
 
       setStats({
         totalDevices,
@@ -284,13 +336,9 @@ export default function Dashboard() {
 
   const handleGroupDevice = async (deviceId: string, groupName: string) => {
     try {
-      const { error } = await supabase
-        .from('devices')
-        .update({ group_name: groupName })
-        .eq('id', deviceId)
-
-      if (error) throw error
-
+      // For now, we'll just update local state since grouping is not implemented in the new schema
+      // This can be enhanced later when group functionality is added to personal_devices table
+      
       // Update local state
       setDevices(prevDevices =>
         prevDevices.map(device =>
