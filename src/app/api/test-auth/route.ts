@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+// Force dynamic rendering for this API route
+export const dynamic = 'force-dynamic'
+
 function createSupabaseClient() {
   const cookieStore = cookies()
   return createServerClient(
