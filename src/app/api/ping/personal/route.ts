@@ -12,6 +12,24 @@ function createSupabaseClient() {
         get(name: string) {
           return cookieStore.get(name)?.value
         },
+        set(name: string, value: string, options: any) {
+          try {
+            cookieStore.set({ name, value, ...options })
+          } catch {
+            // The `set` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing
+            // user sessions.
+          }
+        },
+        remove(name: string, options: any) {
+          try {
+            cookieStore.set({ name, value: '', ...options })
+          } catch {
+            // The `delete` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing
+            // user sessions.
+          }
+        },
       },
     }
   )
@@ -35,7 +53,7 @@ export async function POST(request: NextRequest) {
       altitude,
       speed,
       heading,
-      source = 'gps',
+      source = 'browser_geolocation',
       is_background = false
     } = body
 
@@ -68,9 +86,15 @@ export async function POST(request: NextRequest) {
       p_is_background: is_background
     })
 
-    if (error) throw error
+    if (error) {
+      console.error('Database error:', error)
+      throw error
+    }
 
-    return NextResponse.json(data)
+    return NextResponse.json({
+      success: true,
+      data: data
+    })
 
   } catch (error) {
     console.error('Error processing location ping:', error)
