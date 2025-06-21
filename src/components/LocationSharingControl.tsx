@@ -189,6 +189,7 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
       const response = await fetch('/api/device/personal', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Include cookies for authentication
         body: JSON.stringify({
           device_id: deviceId,
           location_sharing_enabled: enabled

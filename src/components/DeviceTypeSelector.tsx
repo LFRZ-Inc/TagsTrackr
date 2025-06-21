@@ -61,6 +61,7 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
       const response = await fetch('/api/device/personal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Include cookies for authentication
         body: JSON.stringify({
           device_type: selectedType,
           device_name: deviceName.trim(),
