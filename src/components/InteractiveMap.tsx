@@ -39,17 +39,16 @@ interface MapLocation {
   accuracy?: number | null
 }
 
-interface Tag {
+interface Device {
   id: string
   tag_id: string
-  name?: string
-  type: string
+  device_name: string
   device_type: string
+  device_model?: string
   description: string | null
   is_active: boolean | null
   battery_level: number | null
   last_seen_at: string | null
-  group_name: string | null
   location_sharing_active?: boolean
   current_location?: MapLocation
 }
@@ -64,24 +63,24 @@ interface Geofence {
 }
 
 interface InteractiveMapProps {
-  tags: Tag[]
-  selectedTag?: Tag | null
+  devices: Device[]
+  selectedDevice?: Device | null
   locationHistory?: MapLocation[]
   geofences?: Geofence[]
   height?: string
-  onTagClick?: (tag: Tag) => void
+  onDeviceSelect?: (device: Device) => void
   showRoute?: boolean
   autoCenter?: boolean
   realTimeUpdates?: boolean
 }
 
 export default function InteractiveMap({
-  tags,
-  selectedTag,
+  devices,
+  selectedDevice,
   locationHistory = [],
   geofences = [],
   height = '400px',
-  onTagClick,
+  onDeviceSelect,
   showRoute = false,
   autoCenter = true,
   realTimeUpdates = false
@@ -153,12 +152,12 @@ export default function InteractiveMap({
     }
   }, [])
 
-  // Auto-center map when tags change
+  // Auto-center map when devices change
   useEffect(() => {
-    if (map && autoCenter && tags.length > 0 && leafletLoaded) {
-      const validLocations = tags
-        .filter(tag => tag.current_location?.latitude && tag.current_location?.longitude)
-        .map(tag => [tag.current_location!.latitude, tag.current_location!.longitude])
+    if (map && autoCenter && devices.length > 0 && leafletLoaded) {
+      const validLocations = devices
+        .filter(device => device.current_location?.latitude && device.current_location?.longitude)
+        .map(device => [device.current_location!.latitude, device.current_location!.longitude])
 
       if (validLocations.length > 0) {
         if (validLocations.length === 1) {
@@ -168,15 +167,15 @@ export default function InteractiveMap({
         }
       }
     }
-  }, [map, tags, autoCenter, leafletLoaded])
+  }, [map, devices, autoCenter, leafletLoaded])
 
-  // Focus on selected tag
+  // Focus on selected device
   useEffect(() => {
-    if (map && selectedTag?.current_location && leafletLoaded) {
-      const { latitude, longitude } = selectedTag.current_location
+    if (map && selectedDevice?.current_location && leafletLoaded) {
+      const { latitude, longitude } = selectedDevice.current_location
       map.setView([latitude, longitude], 16, { animate: true })
     }
-  }, [map, selectedTag, leafletLoaded])
+  }, [map, selectedDevice, leafletLoaded])
 
   const formatTimestamp = (timestamp: string) => {
     return new Date(timestamp).toLocaleString()
@@ -196,19 +195,19 @@ export default function InteractiveMap({
     )
   }
 
-  // Default center (somewhere in the US if no tags)
+  // Default center (somewhere in the US if no devices)
   const defaultCenter: [number, number] = [39.8283, -98.5795]
-  const mapCenter = selectedTag?.current_location 
-    ? [selectedTag.current_location.latitude, selectedTag.current_location.longitude] as [number, number]
-    : tags.find(t => t.current_location)?.current_location
-    ? [tags.find(t => t.current_location)!.current_location!.latitude, tags.find(t => t.current_location)!.current_location!.longitude] as [number, number]
+  const mapCenter = selectedDevice?.current_location 
+    ? [selectedDevice.current_location.latitude, selectedDevice.current_location.longitude] as [number, number]
+    : devices.find(d => d.current_location)?.current_location
+    ? [devices.find(d => d.current_location)!.current_location!.latitude, devices.find(d => d.current_location)!.current_location!.longitude] as [number, number]
     : defaultCenter
 
   return (
     <div className="w-full h-full rounded-lg overflow-hidden shadow-lg" style={{ height }}>
       <MapContainer
         center={mapCenter}
-        zoom={tags.length > 0 ? 13 : 4}
+        zoom={devices.length > 0 ? 13 : 4}
         style={{ height: '100%', width: '100%' }}
         ref={mapRef}
         whenReady={() => setMap(mapRef.current)}
@@ -219,19 +218,19 @@ export default function InteractiveMap({
         />
 
         {/* Render device markers */}
-        {tags.map((tag) => {
-          if (!tag.current_location?.latitude || !tag.current_location?.longitude) return null
+        {devices.map((device) => {
+          if (!device.current_location?.latitude || !device.current_location?.longitude) return null
           
-          const isSelected = selectedTag?.id === tag.id
-          const icon = customIcon ? customIcon(tag.device_type, isSelected) : undefined
+          const isSelected = selectedDevice?.id === device.id
+          const icon = customIcon ? customIcon(device.device_type, isSelected) : undefined
 
           return (
             <Marker
-              key={tag.id}
-              position={[tag.current_location.latitude, tag.current_location.longitude]}
+              key={device.id}
+              position={[device.current_location.latitude, device.current_location.longitude]}
               icon={icon}
               eventHandlers={{
-                click: () => onTagClick?.(tag)
+                click: () => onDeviceSelect?.(device)
               }}
             >
               <Popup>
@@ -239,33 +238,33 @@ export default function InteractiveMap({
                   <div className="flex items-center gap-2 mb-2">
                     <MapPin className="h-4 w-4 text-blue-600" />
                     <h3 className="font-semibold text-gray-900">
-                      {tag.name || tag.tag_id}
+                      {device.device_name}
                     </h3>
                   </div>
                   
                   <div className="space-y-1 text-sm text-gray-600">
                     <div className="flex items-center gap-1">
                       <span className="font-medium">Type:</span>
-                      <span className="capitalize">{tag.device_type.replace('_', ' ')}</span>
+                      <span className="capitalize">{device.device_type.replace('_', ' ')}</span>
                     </div>
                     
-                    {tag.battery_level && (
+                    {device.battery_level && (
                       <div className="flex items-center gap-1">
                         <Battery className="h-3 w-3" />
-                        <span>{tag.battery_level}%</span>
+                        <span>{device.battery_level}%</span>
                       </div>
                     )}
                     
-                    {tag.last_seen_at && (
+                    {device.last_seen_at && (
                       <div className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        <span>{formatTimestamp(tag.last_seen_at)}</span>
+                        <span>{formatTimestamp(device.last_seen_at)}</span>
                       </div>
                     )}
                     
                     <div className="text-xs text-gray-500 mt-2">
-                      <div>Lat: {tag.current_location.latitude.toFixed(6)}</div>
-                      <div>Lng: {tag.current_location.longitude.toFixed(6)}</div>
+                      <div>Lat: {device.current_location.latitude.toFixed(6)}</div>
+                      <div>Lng: {device.current_location.longitude.toFixed(6)}</div>
                     </div>
                   </div>
                 </div>
