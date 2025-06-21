@@ -75,13 +75,15 @@ export default function SignupPage() {
       }
 
       if (data.user) {
-        // Insert user profile
+        // Insert user profile with admin role for specific email
+        const isAdmin = formData.email === 'luisdrod750@gmail.com'
         const { error: profileError } = await supabase
           .from('users')
           .insert({
             id: data.user.id,
             email: formData.email,
-            full_name: formData.fullName
+            full_name: formData.fullName,
+            role: isAdmin ? 'admin' : 'user'
           })
 
         if (profileError) {
