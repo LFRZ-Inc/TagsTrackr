@@ -1,7 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MapPin, Smartphone, Tablet, Watch, Laptop, ToggleLeft, ToggleRight, AlertCircle, CheckCircle, Info } from 'lucide-react';
+import { 
+  Smartphone, 
+  Tablet, 
+  Watch, 
+  Laptop, 
+  MapPin, 
+  MapPinOff, 
+  AlertCircle, 
+  Info,
+  Activity,
+  Clock
+} from 'lucide-react';
 
 interface Device {
   id: string;
@@ -19,6 +30,8 @@ interface Device {
   group_name: string | null;
   sharing_enabled?: boolean;
   location_sharing_active?: boolean;
+  browser_fingerprint?: string;
+  is_current_device?: boolean;
   current_location?: {
     latitude: number;
     longitude: number;
@@ -30,107 +43,168 @@ interface LocationSharingControlProps {
   onDeviceUpdate: () => void;
 }
 
+// Generate the same browser fingerprint as in DeviceTypeSelector
+const generateBrowserFingerprint = (): string => {
+  if (typeof window === 'undefined') return 'unknown';
+  
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx!.textBaseline = 'top';
+  ctx!.font = '14px Arial';
+  ctx!.fillText('Browser fingerprint', 2, 2);
+  
+  const fingerprint = [
+    navigator.userAgent,
+    navigator.language,
+    screen.width + 'x' + screen.height,
+    new Date().getTimezoneOffset(),
+    canvas.toDataURL()
+  ].join('|');
+  
+  // Simple hash function
+  let hash = 0;
+  for (let i = 0; i < fingerprint.length; i++) {
+    const char = fingerprint.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  
+  return Math.abs(hash).toString(36);
+};
+
 const getDeviceIcon = (deviceType: string) => {
   switch (deviceType) {
     case 'phone': return Smartphone;
     case 'tablet': return Tablet;
     case 'watch': return Watch;
     case 'laptop': return Laptop;
-    default: return MapPin;
+    default: return Smartphone;
   }
 };
 
 export default function LocationSharingControl({ devices, onDeviceUpdate }: LocationSharingControlProps) {
-  const [sharingStates, setSharingStates] = useState<Record<string, boolean>>({});
-  const [locationWatchers, setLocationWatchers] = useState<Record<string, number>>({});
   const [locationSupported, setLocationSupported] = useState(false);
-  const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
-  const [errorMessage, setErrorMessage] = useState<string>('');
+  const [permissionStatus, setPermissionStatus] = useState<PermissionState | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
+  const [isWatching, setIsWatching] = useState(false);
+  const [locationWatchId, setLocationWatchId] = useState<number | null>(null);
+  const [currentDevice, setCurrentDevice] = useState<Device | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const personalDevices = devices.filter(d => ['phone', 'tablet', 'watch', 'laptop'].includes(d.device_type));
+  // Find current device based on browser fingerprint or localStorage
+  useEffect(() => {
+    const findCurrentDevice = async () => {
+      // Try localStorage first
+      const storedDeviceId = localStorage.getItem('tagstrackr_current_device_id');
+      const storedFingerprint = localStorage.getItem('tagstrackr_device_fingerprint');
+      
+      if (storedDeviceId) {
+        const device = devices.find(d => d.id === storedDeviceId);
+        if (device) {
+          setCurrentDevice(device);
+          setIsSharing(device.location_sharing_active || false);
+          return;
+        }
+      }
+
+      // Try browser fingerprint
+      const browserFingerprint = generateBrowserFingerprint();
+      const device = devices.find(d => d.browser_fingerprint === browserFingerprint);
+      
+      if (device) {
+        setCurrentDevice(device);
+        setIsSharing(device.location_sharing_active || false);
+        // Store in localStorage for faster lookup next time
+        localStorage.setItem('tagstrackr_current_device_id', device.id);
+        localStorage.setItem('tagstrackr_device_fingerprint', browserFingerprint);
+      } else if (devices.length > 0) {
+        // If no exact match, check if there's only one device of the same type
+        const browserDeviceType = detectDeviceType();
+        const matchingDevices = devices.filter(d => d.device_type === browserDeviceType);
+        
+        if (matchingDevices.length === 1) {
+          setCurrentDevice(matchingDevices[0]);
+          setIsSharing(matchingDevices[0].location_sharing_active || false);
+        }
+      }
+    };
+
+    findCurrentDevice();
+  }, [devices]);
+
+  // Auto-detect device type (same as DeviceTypeSelector)
+  const detectDeviceType = (): string => {
+    if (typeof window === 'undefined') return 'laptop';
+    
+    const userAgent = navigator.userAgent.toLowerCase();
+    const screenWidth = window.screen.width;
+    const screenHeight = window.screen.height;
+    const maxDimension = Math.max(screenWidth, screenHeight);
+    const minDimension = Math.min(screenWidth, screenHeight);
+    
+    if (/iphone|android.*mobile/i.test(userAgent)) {
+      return 'phone';
+    }
+    
+    if (/ipad|android(?!.*mobile)|tablet/i.test(userAgent)) {
+      return 'tablet';
+    }
+    
+    if (maxDimension <= 768 && minDimension <= 500) {
+      return 'phone';
+    } else if (maxDimension <= 1024 && minDimension <= 768) {
+      return 'tablet';
+    }
+    
+    return 'laptop';
+  };
 
   useEffect(() => {
     // Check if geolocation is supported
     setLocationSupported('geolocation' in navigator);
-    
-    // Check current permission status
+
+    // Check permission status
     if ('permissions' in navigator) {
       navigator.permissions.query({ name: 'geolocation' }).then((result) => {
         setPermissionStatus(result.state);
+        result.addEventListener('change', () => {
+          setPermissionStatus(result.state);
+        });
       });
     }
-
-    // Initialize sharing states
-    const states: Record<string, boolean> = {};
-    personalDevices.forEach(device => {
-      states[device.id] = device.location_sharing_active || false;
-    });
-    setSharingStates(states);
-  }, [personalDevices]);
+  }, []);
 
   const getLocationErrorMessage = (error: GeolocationPositionError): string => {
     switch (error.code) {
       case error.PERMISSION_DENIED:
-        return 'Location access denied. Please allow location access in your browser settings and try again.';
+        return 'Location access denied. Please enable location permissions in your browser settings.';
       case error.POSITION_UNAVAILABLE:
-        return 'Location information unavailable. Please check your device\'s location settings.';
+        return 'Location information unavailable. Please check your GPS/WiFi connection.';
       case error.TIMEOUT:
         return 'Location request timed out. Please try again.';
       default:
-        return 'Unable to get location. Please try again.';
+        return 'An unknown location error occurred. Please try again.';
     }
   };
 
-  const requestLocationPermission = async (): Promise<boolean> => {
-    setErrorMessage('');
-    
-    return new Promise((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        () => {
-          setPermissionStatus('granted');
-          setErrorMessage('');
-          resolve(true);
-        },
-        (error) => {
-          console.error('Location permission error:', error);
-          const message = getLocationErrorMessage(error);
-          setErrorMessage(message);
-          setPermissionStatus('denied');
-          resolve(false);
-        },
-        { 
-          timeout: 15000,
-          enableHighAccuracy: false // Use less battery for permission check
-        }
-      );
-    });
-  };
-
-  const startLocationSharing = async (deviceId: string) => {
-    if (!locationSupported) {
-      setErrorMessage('Geolocation is not supported by this browser');
+  const startLocationSharing = async () => {
+    if (!currentDevice) {
+      setErrorMessage('No current device found. Please register this device first.');
       return;
     }
 
-    // Request permission if needed
-    if (permissionStatus !== 'granted') {
-      const granted = await requestLocationPermission();
-      if (!granted) {
-        return; // Error message already set
-      }
-    }
-
-    // Start watching position
     const watchId = navigator.geolocation.watchPosition(
       async (position) => {
         const { latitude, longitude, accuracy, altitude, speed, heading } = position.coords;
-        
+
         try {
           const response = await fetch('/api/ping/personal', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({
-              device_id: deviceId,
+              device_id: currentDevice.id,
               latitude,
               longitude,
               accuracy,
@@ -157,7 +231,7 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
         console.error('Location tracking error:', error);
         const message = getLocationErrorMessage(error);
         setErrorMessage(message);
-        handleToggleSharing(deviceId, false);
+        handleToggleSharing(false);
       },
       {
         enableHighAccuracy: true,
@@ -166,22 +240,25 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
       }
     );
 
-    setLocationWatchers(prev => ({ ...prev, [deviceId]: watchId }));
+    setLocationWatchId(watchId);
+    setIsWatching(true);
   };
 
-  const stopLocationSharing = (deviceId: string) => {
-    const watchId = locationWatchers[deviceId];
-    if (watchId) {
-      navigator.geolocation.clearWatch(watchId);
-      setLocationWatchers(prev => {
-        const newWatchers = { ...prev };
-        delete newWatchers[deviceId];
-        return newWatchers;
-      });
+  const stopLocationSharing = () => {
+    if (locationWatchId) {
+      navigator.geolocation.clearWatch(locationWatchId);
+      setLocationWatchId(null);
+      setIsWatching(false);
     }
   };
 
-  const handleToggleSharing = async (deviceId: string, enabled: boolean) => {
+  const handleToggleSharing = async (enabled: boolean) => {
+    if (!currentDevice) {
+      setErrorMessage('No current device found. Please register this device first.');
+      return;
+    }
+
+    setLoading(true);
     setErrorMessage('');
     
     try {
@@ -189,9 +266,9 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
       const response = await fetch('/api/device/personal', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // Include cookies for authentication
+        credentials: 'include',
         body: JSON.stringify({
-          device_id: deviceId,
+          device_id: currentDevice.id,
           location_sharing_enabled: enabled
         })
       });
@@ -200,13 +277,13 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
       
       if (response.ok && data.success) {
         // Update local state
-        setSharingStates(prev => ({ ...prev, [deviceId]: enabled }));
+        setIsSharing(enabled);
         
         // Start/stop location tracking
         if (enabled) {
-          await startLocationSharing(deviceId);
+          await startLocationSharing();
         } else {
-          stopLocationSharing(deviceId);
+          stopLocationSharing();
         }
         
         onDeviceUpdate();
@@ -216,6 +293,8 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
     } catch (error) {
       console.error('Error toggling location sharing:', error);
       setErrorMessage('Failed to update sharing settings. Please check your connection.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -232,14 +311,34 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
     return 'Just now';
   };
 
-  if (personalDevices.length === 0) {
-    return null;
+  // Don't show if no current device found
+  if (!currentDevice) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Location Sharing</h3>
+        </div>
+        
+        <div className="text-center py-8">
+          <MapPinOff className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h4 className="text-lg font-medium text-gray-900 mb-2">No Current Device Found</h4>
+          <p className="text-gray-600 mb-4">
+            To enable location sharing, please register this device first.
+          </p>
+          <p className="text-sm text-gray-500">
+            Click "Add This Device" to register the device you're currently using.
+          </p>
+        </div>
+      </div>
+    );
   }
+
+  const DeviceIcon = getDeviceIcon(currentDevice.device_type);
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">Personal Device Tracking</h3>
+        <h3 className="text-lg font-semibold text-gray-900">Location Sharing</h3>
         {!locationSupported && (
           <div className="flex items-center text-orange-600">
             <AlertCircle className="h-4 w-4 mr-1" />
@@ -287,85 +386,105 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
         </div>
       )}
 
-      <div className="space-y-4">
-        {personalDevices.map((device) => {
-          const DeviceIcon = getDeviceIcon(device.device_type);
-          const isSharing = sharingStates[device.id] || false;
-          const isWatching = !!locationWatchers[device.id];
-
-          return (
-            <div key={device.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-              <div className="flex items-center space-x-3">
-                <div className={`p-2 rounded-full ${
-                  isSharing ? 'bg-green-100' : 'bg-gray-100'
-                }`}>
-                  <DeviceIcon className={`h-5 w-5 ${
-                    isSharing ? 'text-green-600' : 'text-gray-600'
-                  }`} />
-                </div>
-                
-                <div>
-                  <h4 className="font-medium text-gray-900">{device.tag_id}</h4>
-                  <div className="flex items-center space-x-2 text-sm text-gray-600">
-                    {device.device_model && (
-                      <span>{device.device_model}</span>
-                    )}
-                    {device.device_os && (
-                      <span>• {device.device_os}</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    Last seen: {formatLastSeen(device.last_ping_at || device.last_seen_at || undefined)}
-                  </p>
-                </div>
+      {/* Current Device Card */}
+      <div className="border border-gray-200 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className={`p-3 rounded-full ${
+              isSharing ? 'bg-green-100' : 'bg-gray-100'
+            }`}>
+              <DeviceIcon className={`h-6 w-6 ${
+                isSharing ? 'text-green-600' : 'text-gray-600'
+              }`} />
+            </div>
+            
+            <div>
+              <h4 className="font-medium text-gray-900">{currentDevice.tag_id}</h4>
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                {currentDevice.device_model && (
+                  <span>{currentDevice.device_model}</span>
+                )}
+                {currentDevice.device_os && (
+                  <span>• {currentDevice.device_os}</span>
+                )}
               </div>
-
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-3 text-xs text-gray-500 mt-1">
+                <div className="flex items-center">
+                  <Clock className="h-3 w-3 mr-1" />
+                  <span>Last seen: {formatLastSeen(currentDevice.last_ping_at || currentDevice.last_seen_at || undefined)}</span>
+                </div>
                 {isWatching && (
                   <div className="flex items-center text-green-600">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
-                    <span className="text-xs font-medium">Tracking</span>
+                    <Activity className="h-3 w-3 mr-1" />
+                    <span className="font-medium">Live tracking</span>
                   </div>
                 )}
-                
-                <button
-                  onClick={() => handleToggleSharing(device.id, !isSharing)}
-                  disabled={!locationSupported}
-                  className="flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  title={!locationSupported ? 'Location not supported in this browser' : ''}
-                >
-                  {isSharing ? (
-                    <ToggleRight className="h-6 w-6 text-green-600" />
-                  ) : (
-                    <ToggleLeft className="h-6 w-6 text-gray-400" />
-                  )}
-                  <span className={`text-sm font-medium ${
-                    isSharing ? 'text-green-600' : 'text-gray-500'
-                  }`}>
-                    {isSharing ? 'Sharing' : 'Off'}
-                  </span>
-                </button>
               </div>
             </div>
-          );
-        })}
-      </div>
+          </div>
 
-      {/* Info Box */}
-      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-        <div className="flex items-start">
-          <CheckCircle className="h-5 w-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
-          <div className="text-sm text-blue-800">
-            <p className="font-medium mb-1">How it works:</p>
-            <ul className="space-y-1 text-xs">
-              <li>• Toggle sharing to start sending your location every few minutes</li>
-              <li>• Your location is only shared when you explicitly enable it</li>
-              <li>• Works in the background while your browser is open</li>
-              <li>• All data is encrypted and private to your account</li>
-            </ul>
+          {/* Toggle Switch */}
+          <div className="flex flex-col items-end space-y-2">
+            <button
+              onClick={() => handleToggleSharing(!isSharing)}
+              disabled={loading || !locationSupported}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                isSharing ? 'bg-green-600' : 'bg-gray-200'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  isSharing ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+            
+            <div className="text-center">
+              {loading ? (
+                <div className="flex items-center text-xs text-gray-500">
+                  <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin mr-1"></div>
+                  Updating...
+                </div>
+              ) : (
+                <div className="flex items-center text-xs">
+                  {isSharing ? (
+                    <>
+                      <MapPin className="h-3 w-3 text-green-600 mr-1" />
+                      <span className="text-green-600 font-medium">Sharing</span>
+                    </>
+                  ) : (
+                    <>
+                      <MapPinOff className="h-3 w-3 text-gray-500 mr-1" />
+                      <span className="text-gray-500">Off</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Current Device Info */}
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <div className="flex items-center text-xs text-blue-600">
+            <Info className="h-3 w-3 mr-1" />
+            <span>This is the device you're currently using</span>
           </div>
         </div>
       </div>
+
+      {/* Instructions */}
+      {!isSharing && locationSupported && (
+        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <h4 className="font-medium text-blue-900 mb-2">📍 How Location Sharing Works</h4>
+          <ul className="text-sm text-blue-800 space-y-1">
+            <li>• Toggle the switch above to start sharing your location</li>
+            <li>• Your browser will ask for location permission</li>
+            <li>• Location updates will be sent automatically while enabled</li>
+            <li>• You can turn off sharing anytime</li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 } 

@@ -15,10 +15,10 @@ ADD COLUMN IF NOT EXISTS subscription_id UUID REFERENCES public.subscriptions(id
 -- DEVICE MANAGEMENT TABLES
 -- =============================================
 
--- Main devices table for physical tags
+-- Main devices table for physical tags AND personal devices
 CREATE TABLE IF NOT EXISTS public.devices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tag_id VARCHAR(20) UNIQUE NOT NULL, -- Physical tag identifier (QR/NFC)
+    tag_id VARCHAR(20) UNIQUE NOT NULL, -- Physical tag identifier (QR/NFC) OR device name
     type VARCHAR(20) NOT NULL CHECK (type IN ('standard', 'returnable')),
     adhesive BOOLEAN DEFAULT false,
     registered_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -30,10 +30,21 @@ CREATE TABLE IF NOT EXISTS public.devices (
     last_ping_at TIMESTAMP WITH TIME ZONE,
     firmware_version VARCHAR(10) DEFAULT '1.0.0',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Personal device fields (Phase 2)
+    device_type VARCHAR(20) CHECK (device_type IN ('gps_tag', 'phone', 'tablet', 'watch', 'laptop')),
+    device_model VARCHAR(100), -- e.g., "iPhone 15 Pro", "Galaxy S24"
+    device_os VARCHAR(50), -- e.g., "iOS 17", "Android 14", "Windows 11"
+    browser_fingerprint VARCHAR(100), -- For associating browser sessions with devices
+    is_current_device BOOLEAN DEFAULT false, -- Mark the device the user is currently on
+    location_sharing_enabled BOOLEAN DEFAULT false,
+    location_sharing_active BOOLEAN DEFAULT false,
+    last_seen_at TIMESTAMP WITH TIME ZONE,
+    sharing_enabled BOOLEAN DEFAULT false -- Legacy compatibility
 );
 
--- Device location history
+-- Device location history (enhanced for personal devices)
 CREATE TABLE IF NOT EXISTS public.device_locations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     device_id UUID REFERENCES public.devices(id) ON DELETE CASCADE,
@@ -44,7 +55,13 @@ CREATE TABLE IF NOT EXISTS public.device_locations (
     speed DECIMAL(8, 2),
     heading DECIMAL(5, 2),
     recorded_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Personal device location fields
+    source_device_type VARCHAR(20), -- Which type of device reported this
+    accuracy_radius DECIMAL(10, 2), -- GPS accuracy radius in meters
+    location_source VARCHAR(30) DEFAULT 'gps', -- 'gps', 'wifi', 'cell', 'manual'
+    is_background_ping BOOLEAN DEFAULT false -- Whether this was a background location update
 );
 
 -- =============================================
@@ -181,6 +198,10 @@ CREATE INDEX IF NOT EXISTS idx_devices_owner_id ON public.devices(owner_id);
 CREATE INDEX IF NOT EXISTS idx_devices_tag_id ON public.devices(tag_id);
 CREATE INDEX IF NOT EXISTS idx_devices_type ON public.devices(type);
 CREATE INDEX IF NOT EXISTS idx_devices_is_active ON public.devices(is_active);
+CREATE INDEX IF NOT EXISTS idx_devices_device_type ON public.devices(device_type);
+CREATE INDEX IF NOT EXISTS idx_devices_browser_fingerprint ON public.devices(browser_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_devices_location_sharing ON public.devices(location_sharing_enabled);
+CREATE INDEX IF NOT EXISTS idx_devices_is_current ON public.devices(is_current_device);
 
 -- Location indexes
 CREATE INDEX IF NOT EXISTS idx_device_locations_device_id ON public.device_locations(device_id);
@@ -414,6 +435,228 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================
+-- STORED FUNCTIONS FOR PERSONAL DEVICES
+-- =============================================
+
+-- Function to register a personal device (phone, tablet, watch, laptop)
+CREATE OR REPLACE FUNCTION register_personal_device(
+    p_device_type VARCHAR(20),
+    p_device_name VARCHAR(100),
+    p_device_model VARCHAR(100) DEFAULT NULL,
+    p_device_os VARCHAR(50) DEFAULT NULL
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    new_device_id UUID;
+    user_uuid UUID;
+BEGIN
+    -- Get the authenticated user
+    user_uuid := auth.uid();
+    
+    IF user_uuid IS NULL THEN
+        RAISE EXCEPTION 'User not authenticated';
+    END IF;
+
+    -- Validate device type
+    IF p_device_type NOT IN ('phone', 'tablet', 'watch', 'laptop') THEN
+        RAISE EXCEPTION 'Invalid device type. Must be phone, tablet, watch, or laptop';
+    END IF;
+
+    -- Insert the personal device
+    INSERT INTO public.devices (
+        tag_id,
+        type,
+        owner_id,
+        device_type,
+        device_model,
+        device_os,
+        is_active,
+        location_sharing_enabled,
+        location_sharing_active,
+        registered_at,
+        last_seen_at
+    ) VALUES (
+        p_device_name,
+        'standard', -- Default type for personal devices
+        user_uuid,
+        p_device_type,
+        p_device_model,
+        p_device_os,
+        true,
+        false, -- Location sharing off by default
+        false,
+        NOW(),
+        NOW()
+    )
+    RETURNING id INTO new_device_id;
+
+    RETURN new_device_id;
+END;
+$$;
+
+-- Function to toggle location sharing for a device
+CREATE OR REPLACE FUNCTION toggle_location_sharing(
+    p_device_id UUID,
+    p_enabled BOOLEAN
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    user_uuid UUID;
+    device_owner UUID;
+    result JSONB;
+BEGIN
+    -- Get the authenticated user
+    user_uuid := auth.uid();
+    
+    IF user_uuid IS NULL THEN
+        RAISE EXCEPTION 'User not authenticated';
+    END IF;
+
+    -- Check if user owns this device
+    SELECT owner_id INTO device_owner
+    FROM public.devices
+    WHERE id = p_device_id;
+
+    IF device_owner IS NULL THEN
+        RAISE EXCEPTION 'Device not found';
+    END IF;
+
+    IF device_owner != user_uuid THEN
+        RAISE EXCEPTION 'Access denied: You do not own this device';
+    END IF;
+
+    -- Update the device
+    UPDATE public.devices
+    SET 
+        location_sharing_enabled = p_enabled,
+        location_sharing_active = p_enabled,
+        sharing_enabled = p_enabled, -- Legacy compatibility
+        last_seen_at = NOW(),
+        updated_at = NOW()
+    WHERE id = p_device_id;
+
+    -- Return success result
+    result := jsonb_build_object(
+        'success', true,
+        'device_id', p_device_id,
+        'location_sharing_enabled', p_enabled,
+        'updated_at', NOW()
+    );
+
+    RETURN result;
+END;
+$$;
+
+-- Function to process location pings from personal devices
+CREATE OR REPLACE FUNCTION process_location_ping(
+    p_device_id UUID,
+    p_latitude DECIMAL(10, 8),
+    p_longitude DECIMAL(11, 8),
+    p_accuracy DECIMAL(10, 2) DEFAULT NULL,
+    p_altitude DECIMAL(10, 2) DEFAULT NULL,
+    p_speed DECIMAL(8, 2) DEFAULT NULL,
+    p_heading DECIMAL(5, 2) DEFAULT NULL,
+    p_source VARCHAR(30) DEFAULT 'browser_geolocation',
+    p_is_background BOOLEAN DEFAULT false
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    user_uuid UUID;
+    device_owner UUID;
+    device_type_val VARCHAR(20);
+    result JSONB;
+    location_id UUID;
+BEGIN
+    -- Get the authenticated user
+    user_uuid := auth.uid();
+    
+    IF user_uuid IS NULL THEN
+        RAISE EXCEPTION 'User not authenticated';
+    END IF;
+
+    -- Check if user owns this device and get device type
+    SELECT owner_id, device_type INTO device_owner, device_type_val
+    FROM public.devices
+    WHERE id = p_device_id;
+
+    IF device_owner IS NULL THEN
+        RAISE EXCEPTION 'Device not found';
+    END IF;
+
+    IF device_owner != user_uuid THEN
+        RAISE EXCEPTION 'Access denied: You do not own this device';
+    END IF;
+
+    -- Check if location sharing is enabled
+    IF NOT EXISTS (
+        SELECT 1 FROM public.devices 
+        WHERE id = p_device_id 
+        AND location_sharing_enabled = true
+    ) THEN
+        RAISE EXCEPTION 'Location sharing is not enabled for this device';
+    END IF;
+
+    -- Insert the location record
+    INSERT INTO public.device_locations (
+        device_id,
+        latitude,
+        longitude,
+        accuracy,
+        altitude,
+        speed,
+        heading,
+        recorded_at,
+        source_device_type,
+        accuracy_radius,
+        location_source,
+        is_background_ping
+    ) VALUES (
+        p_device_id,
+        p_latitude,
+        p_longitude,
+        p_accuracy,
+        p_altitude,
+        p_speed,
+        p_heading,
+        NOW(),
+        device_type_val,
+        p_accuracy,
+        p_source,
+        p_is_background
+    )
+    RETURNING id INTO location_id;
+
+    -- Update device last ping time and location
+    UPDATE public.devices
+    SET 
+        last_ping_at = NOW(),
+        last_seen_at = NOW(),
+        location_sharing_active = true,
+        updated_at = NOW()
+    WHERE id = p_device_id;
+
+    -- Return success result
+    result := jsonb_build_object(
+        'success', true,
+        'location_id', location_id,
+        'device_id', p_device_id,
+        'recorded_at', NOW()
+    );
+
+    RETURN result;
+END;
+$$;
+
+-- =============================================
 -- TRIGGERS
 -- =============================================
 
@@ -517,6 +760,9 @@ GRANT EXECUTE ON FUNCTION can_add_device TO authenticated;
 GRANT EXECUTE ON FUNCTION register_device TO authenticated;
 GRANT EXECUTE ON FUNCTION process_tag_return TO authenticated;
 GRANT EXECUTE ON FUNCTION trigger_movement_alert TO authenticated;
+GRANT EXECUTE ON FUNCTION register_personal_device TO authenticated;
+GRANT EXECUTE ON FUNCTION toggle_location_sharing TO authenticated;
+GRANT EXECUTE ON FUNCTION process_location_ping TO authenticated;
 
 -- =============================================
 -- COMPLETION MESSAGE

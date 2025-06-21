@@ -45,12 +45,38 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { device_type, device_name, device_model, device_os } = body
+    const { 
+      device_type, 
+      device_name, 
+      device_model, 
+      device_os,
+      browser_fingerprint,
+      is_current_device = false
+    } = body
 
     // Validate device type
     const validTypes = ['phone', 'tablet', 'watch', 'laptop']
     if (!validTypes.includes(device_type)) {
       return NextResponse.json({ error: 'Invalid device type' }, { status: 400 })
+    }
+
+    // Check if device with this fingerprint already exists for this user
+    if (browser_fingerprint) {
+      const { data: existingDevice } = await supabase
+        .from('devices')
+        .select('id, tag_id')
+        .eq('owner_id', user.id)
+        .eq('browser_fingerprint', browser_fingerprint)
+        .single()
+
+      if (existingDevice) {
+        return NextResponse.json({
+          success: true,
+          device_id: existingDevice.id,
+          message: 'Device already registered for this browser',
+          existing: true
+        })
+      }
     }
 
     // Register personal device using stored function
@@ -64,6 +90,22 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Database error:', error)
       throw error
+    }
+
+    // Update the device with browser fingerprint if provided
+    if (browser_fingerprint && data) {
+      const { error: updateError } = await supabase
+        .from('devices')
+        .update({ 
+          browser_fingerprint,
+          is_current_device: is_current_device
+        })
+        .eq('id', data)
+        .eq('owner_id', user.id)
+
+      if (updateError) {
+        console.error('Error updating device fingerprint:', updateError)
+      }
     }
 
     return NextResponse.json({
@@ -90,8 +132,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get all personal devices for user
-    const { data: devices, error } = await supabase
+    const url = new URL(request.url)
+    const currentOnly = url.searchParams.get('current_only') === 'true'
+    const browserFingerprint = url.searchParams.get('browser_fingerprint')
+
+    let query = supabase
       .from('devices')
       .select(`
         id,
@@ -105,17 +150,26 @@ export async function GET(request: NextRequest) {
         is_active,
         battery_level,
         last_ping_at,
-        created_at
+        created_at,
+        browser_fingerprint,
+        is_current_device
       `)
       .eq('owner_id', user.id)
       .in('device_type', ['phone', 'tablet', 'watch', 'laptop'])
-      .order('created_at', { ascending: false })
+
+    // Filter for current device only if requested
+    if (currentOnly && browserFingerprint) {
+      query = query.eq('browser_fingerprint', browserFingerprint)
+    }
+
+    const { data: devices, error } = await query.order('created_at', { ascending: false })
 
     if (error) throw error
 
     return NextResponse.json({
       success: true,
-      devices: devices || []
+      devices: devices || [],
+      current_device: currentOnly ? (devices?.[0] || null) : null
     })
 
   } catch (error) {
@@ -139,6 +193,17 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json()
     const { device_id, location_sharing_enabled } = body
 
+    // Verify user owns this device
+    const { data: device, error: deviceError } = await supabase
+      .from('devices')
+      .select('owner_id')
+      .eq('id', device_id)
+      .single()
+
+    if (deviceError || device?.owner_id !== user.id) {
+      return NextResponse.json({ error: 'Device not found or access denied' }, { status: 403 })
+    }
+
     // Toggle location sharing using stored function
     const { data, error } = await supabase.rpc('toggle_location_sharing', {
       p_device_id: device_id,
@@ -147,7 +212,10 @@ export async function PATCH(request: NextRequest) {
 
     if (error) throw error
 
-    return NextResponse.json(data)
+    return NextResponse.json({
+      success: true,
+      data: data
+    })
 
   } catch (error) {
     console.error('Error updating device sharing:', error)

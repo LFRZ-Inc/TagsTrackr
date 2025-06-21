@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Smartphone, Tablet, Watch, Laptop, Plus, X, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Smartphone, Tablet, Watch, Laptop, Plus, X, AlertCircle, Info } from 'lucide-react';
 
 interface DeviceTypeSelectorProps {
   onDeviceAdded: () => void;
@@ -39,14 +39,140 @@ const deviceTypes = [
   }
 ];
 
+// Auto-detect device type based on browser/screen info
+const detectDeviceType = (): string => {
+  if (typeof window === 'undefined') return 'laptop';
+  
+  const userAgent = navigator.userAgent.toLowerCase();
+  const screenWidth = window.screen.width;
+  const screenHeight = window.screen.height;
+  const maxDimension = Math.max(screenWidth, screenHeight);
+  const minDimension = Math.min(screenWidth, screenHeight);
+  
+  // Check for mobile devices
+  if (/iphone|android.*mobile/i.test(userAgent)) {
+    return 'phone';
+  }
+  
+  // Check for tablets
+  if (/ipad|android(?!.*mobile)|tablet/i.test(userAgent)) {
+    return 'tablet';
+  }
+  
+  // Screen size based detection as fallback
+  if (maxDimension <= 768 && minDimension <= 500) {
+    return 'phone';
+  } else if (maxDimension <= 1024 && minDimension <= 768) {
+    return 'tablet';
+  }
+  
+  return 'laptop';
+};
+
+// Generate a browser fingerprint for device identification
+const generateBrowserFingerprint = (): string => {
+  if (typeof window === 'undefined') return 'unknown';
+  
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx!.textBaseline = 'top';
+  ctx!.font = '14px Arial';
+  ctx!.fillText('Browser fingerprint', 2, 2);
+  
+  const fingerprint = [
+    navigator.userAgent,
+    navigator.language,
+    screen.width + 'x' + screen.height,
+    new Date().getTimezoneOffset(),
+    canvas.toDataURL()
+  ].join('|');
+  
+  // Simple hash function
+  let hash = 0;
+  for (let i = 0; i < fingerprint.length; i++) {
+    const char = fingerprint.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  
+  return Math.abs(hash).toString(36);
+};
+
 export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: DeviceTypeSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedType, setSelectedType] = useState<string>('');
+  const [selectedType, setSelectedType] = useState('');
   const [deviceName, setDeviceName] = useState('');
   const [deviceModel, setDeviceModel] = useState('');
   const [deviceOS, setDeviceOS] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState('');
+  const [autoDetected, setAutoDetected] = useState<{
+    type: string;
+    name: string;
+    model: string;
+    os: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (isOpen && typeof window !== 'undefined') {
+      // Auto-detect device information
+      const detectedType = detectDeviceType();
+      const userAgent = navigator.userAgent;
+      
+      let detectedModel = '';
+      let detectedOS = '';
+      let detectedName = '';
+      
+      // Extract OS information
+      if (/windows/i.test(userAgent)) {
+        detectedOS = 'Windows';
+        if (/windows nt 10/i.test(userAgent)) detectedOS = 'Windows 11';
+        else if (/windows nt 6.3/i.test(userAgent)) detectedOS = 'Windows 8.1';
+        else if (/windows nt 6.1/i.test(userAgent)) detectedOS = 'Windows 7';
+      } else if (/mac os x/i.test(userAgent)) {
+        detectedOS = 'macOS';
+        const match = userAgent.match(/mac os x ([\d_]+)/i);
+        if (match) {
+          const version = match[1].replace(/_/g, '.');
+          detectedOS = `macOS ${version}`;
+        }
+      } else if (/iphone/i.test(userAgent)) {
+        detectedOS = 'iOS';
+      } else if (/android/i.test(userAgent)) {
+        detectedOS = 'Android';
+      } else if (/linux/i.test(userAgent)) {
+        detectedOS = 'Linux';
+      }
+      
+      // Extract device model hints
+      if (/iphone/i.test(userAgent)) {
+        detectedModel = 'iPhone';
+      } else if (/ipad/i.test(userAgent)) {
+        detectedModel = 'iPad';
+      } else if (/macintosh/i.test(userAgent)) {
+        detectedModel = 'Mac';
+      } else if (/windows/i.test(userAgent)) {
+        detectedModel = 'PC';
+      }
+      
+      // Generate default name
+      const deviceTypeInfo = deviceTypes.find(d => d.type === detectedType);
+      detectedName = `My ${deviceTypeInfo?.name || 'Device'}`;
+      
+      setAutoDetected({
+        type: detectedType,
+        name: detectedName,
+        model: detectedModel,
+        os: detectedOS
+      });
+      
+      // Pre-fill the form
+      setSelectedType(detectedType);
+      setDeviceName(detectedName);
+      setDeviceModel(detectedModel);
+      setDeviceOS(detectedOS);
+    }
+  }, [isOpen]);
 
   const handleAddDevice = async () => {
     if (!selectedType || !deviceName.trim()) {
@@ -58,21 +184,30 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
     setError('');
     
     try {
+      // Generate browser fingerprint for device identification
+      const browserFingerprint = generateBrowserFingerprint();
+      
       const response = await fetch('/api/device/personal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // Include cookies for authentication
+        credentials: 'include',
         body: JSON.stringify({
           device_type: selectedType,
           device_name: deviceName.trim(),
           device_model: deviceModel.trim() || undefined,
-          device_os: deviceOS.trim() || undefined
+          device_os: deviceOS.trim() || undefined,
+          browser_fingerprint: browserFingerprint,
+          is_current_device: true // Mark this as the current browser/device
         })
       });
 
       const data = await response.json();
       
       if (response.ok) {
+        // Store the device ID in localStorage for this browser
+        localStorage.setItem('tagstrackr_current_device_id', data.device_id);
+        localStorage.setItem('tagstrackr_device_fingerprint', browserFingerprint);
+        
         // Success - close modal and reset form
         setIsOpen(false);
         setSelectedType('');
@@ -83,7 +218,7 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
         onDeviceAdded();
         
         // Show success message
-        alert(`✅ ${deviceName} has been added successfully!\n\nNote: Location sharing is disabled by default. You can enable it from the dashboard when ready.`);
+        alert(`✅ ${deviceName} has been registered as your current device!\n\nYou can now enable location sharing from the dashboard to track this device.`);
       } else {
         if (response.status === 401) {
           setError('Please log in to add devices');
@@ -110,6 +245,7 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
     setDeviceModel('');
     setDeviceOS('');
     setError('');
+    setAutoDetected(null);
   };
 
   if (!isOpen) {
@@ -119,7 +255,7 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
         className={`inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors ${className}`}
       >
         <Plus className="h-4 w-4 mr-2" />
-        Add Personal Device
+        Add This Device
       </button>
     );
   }
@@ -128,7 +264,7 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b">
-          <h2 className="text-xl font-semibold text-gray-900">Add Personal Device</h2>
+          <h2 className="text-xl font-semibold text-gray-900">Add Current Device</h2>
           <button
             onClick={handleClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -138,6 +274,26 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
         </div>
 
         <div className="p-6 space-y-6">
+          {/* Auto-detection Info */}
+          {autoDetected && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+              <div className="flex items-start">
+                <Info className="h-5 w-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h4 className="font-medium text-blue-900 mb-2">🔍 Auto-detected Device Info</h4>
+                  <p className="text-sm text-blue-800 mb-2">
+                    We've automatically detected your device information. You can modify it below if needed.
+                  </p>
+                  <div className="text-xs text-blue-700 space-y-1">
+                    <div><strong>Type:</strong> {autoDetected.type}</div>
+                    <div><strong>OS:</strong> {autoDetected.os}</div>
+                    {autoDetected.model && <div><strong>Model:</strong> {autoDetected.model}</div>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Error Message */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-md p-4 flex items-start">
@@ -151,7 +307,7 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
 
           {/* Device Type Selection */}
           <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Select Device Type</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Confirm Device Type</h3>
             <div className="grid grid-cols-2 gap-4">
               {deviceTypes.map((device) => {
                 const Icon = device.icon;
@@ -170,6 +326,11 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
                         selectedType === device.type ? 'text-blue-600' : 'text-gray-600'
                       }`} />
                       <span className="font-medium text-gray-900">{device.name}</span>
+                      {autoDetected?.type === device.type && (
+                        <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
+                          Detected
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-gray-600 mb-2">{device.description}</p>
                     <p className="text-xs text-gray-500">
@@ -196,7 +357,7 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
                   onChange={(e) => setDeviceName(e.target.value)}
                   placeholder={`My ${getDeviceInfo()?.name}`}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500"
-                  style={{ color: '#111827' }} // Explicit dark text color
+                  style={{ color: '#111827' }}
                 />
               </div>
 
@@ -210,7 +371,7 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
                   onChange={(e) => setDeviceModel(e.target.value)}
                   placeholder="e.g., iPhone 15 Pro, Galaxy S24"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500"
-                  style={{ color: '#111827' }} // Explicit dark text color
+                  style={{ color: '#111827' }}
                 />
               </div>
 
@@ -224,8 +385,19 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
                   onChange={(e) => setDeviceOS(e.target.value)}
                   placeholder="e.g., iOS 17, Android 14, Windows 11"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500"
-                  style={{ color: '#111827' }} // Explicit dark text color
+                  style={{ color: '#111827' }}
                 />
+              </div>
+
+              {/* Current Device Notice */}
+              <div className="bg-green-50 border border-green-200 rounded-md p-4">
+                <h4 className="font-medium text-green-900 mb-2">📱 Current Device Registration</h4>
+                <ul className="text-sm text-green-800 space-y-1">
+                  <li>• This will register the device you're currently using</li>
+                  <li>• Location sharing will work automatically from this browser</li>
+                  <li>• Your device will be identified by a secure browser fingerprint</li>
+                  <li>• You can add other devices from their respective browsers</li>
+                </ul>
               </div>
 
               {/* Privacy Notice */}
@@ -238,33 +410,36 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
                   <li>• You can remove this device anytime</li>
                 </ul>
               </div>
-
-              {/* Location Permission Info */}
-              <div className="bg-amber-50 border border-amber-200 rounded-md p-4">
-                <h4 className="font-medium text-amber-900 mb-2">📍 Location Sharing</h4>
-                <p className="text-sm text-amber-800">
-                  To enable location tracking for this device, you'll need to grant location permission in your browser. 
-                  This will be requested when you turn on location sharing from the dashboard.
-                </p>
-              </div>
             </div>
           )}
-        </div>
 
-        <div className="flex space-x-3 p-6 border-t bg-gray-50">
-          <button
-            onClick={handleClose}
-            className="flex-1 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleAddDevice}
-            disabled={!selectedType || !deviceName.trim() || loading}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? 'Adding...' : 'Add Device'}
-          </button>
+          {/* Action Buttons */}
+          <div className="flex justify-end space-x-3 pt-4 border-t">
+            <button
+              onClick={handleClose}
+              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+              disabled={loading}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAddDevice}
+              disabled={loading || !selectedType || !deviceName.trim()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+            >
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Adding Device...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add This Device
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>
