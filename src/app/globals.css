@@ -4,6 +4,9 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+/* Import Leaflet CSS for map styling */
+@import 'leaflet/dist/leaflet.css';
+
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;
@@ -33,6 +36,24 @@ input, textarea, select {
 
 input::placeholder, textarea::placeholder {
   color: #6b7280 !important; /* Force gray placeholder text */
+}
+
+/* Fix Leaflet map container */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  z-index: 1;
+}
+
+/* Custom marker styles */
+.custom-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.selected-marker {
+  background: transparent !important;
+  border: none !important;
 }
 
 @layer utilities {

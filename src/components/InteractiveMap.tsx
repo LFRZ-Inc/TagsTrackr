@@ -98,50 +98,57 @@ export default function InteractiveMap({
       import('leaflet').then((L) => {
         setLeafletLoaded(true)
         
-        // Fix default icon paths
-        delete (L.Icon.Default.prototype as any)._getIconUrl
-        L.Icon.Default.mergeOptions({
-          iconRetinaUrl: '/leaflet/marker-icon-2x.png',
-          iconUrl: '/leaflet/marker-icon.png',
-          shadowUrl: '/leaflet/marker-shadow.png',
-        })
-
-        // Create custom icons
-        const defaultIcon = L.divIcon({
-          html: `
-            <div class="relative">
-              <div class="w-8 h-8 bg-blue-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-                </svg>
+        // Create custom div icons (no need for external image files)
+        const getDeviceIcon = (deviceType: string, isSelected: boolean = false) => {
+          const size = isSelected ? 40 : 32
+          const bgColor = isSelected ? 'bg-red-500' : getDeviceColor(deviceType)
+          const pulseClass = isSelected ? 'animate-pulse' : ''
+          
+          return L.divIcon({
+            html: `
+              <div class="relative">
+                <div class="w-${size/4} h-${size/4} ${bgColor} rounded-full border-2 border-white shadow-lg flex items-center justify-center ${pulseClass}">
+                  ${getDeviceIconSvg(deviceType)}
+                </div>
+                ${isSelected ? '<div class="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full border border-white animate-ping"></div>' : ''}
               </div>
-            </div>
-          `,
-          className: 'custom-marker',
-          iconSize: [32, 32],
-          iconAnchor: [16, 32],
-          popupAnchor: [0, -32]
-        })
+            `,
+            className: 'custom-marker',
+            iconSize: [size, size],
+            iconAnchor: [size/2, size],
+            popupAnchor: [0, -size]
+          })
+        }
 
-        const selectedTagIcon = L.divIcon({
-          html: `
-            <div class="relative">
-              <div class="w-10 h-10 bg-red-500 rounded-full border-3 border-white shadow-xl flex items-center justify-center animate-pulse">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-                </svg>
-              </div>
-              <div class="absolute -top-2 -right-2 w-4 h-4 bg-yellow-400 rounded-full border border-white animate-ping"></div>
-            </div>
-          `,
-          className: 'selected-marker',
-          iconSize: [40, 40],
-          iconAnchor: [20, 40],
-          popupAnchor: [0, -40]
-        })
+        const getDeviceColor = (deviceType: string) => {
+          switch (deviceType) {
+            case 'gps_tag': return 'bg-blue-500'
+            case 'phone': return 'bg-green-500'
+            case 'tablet': return 'bg-purple-500'
+            case 'watch': return 'bg-orange-500'
+            case 'laptop': return 'bg-gray-600'
+            default: return 'bg-blue-500'
+          }
+        }
 
-        setCustomIcon(defaultIcon)
-        setSelectedIcon(selectedTagIcon)
+        const getDeviceIconSvg = (deviceType: string) => {
+          const iconClass = "w-4 h-4 fill-white"
+          switch (deviceType) {
+            case 'phone':
+              return `<svg class="${iconClass}" viewBox="0 0 24 24"><path d="M17 2H7c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H7V6h10v10z"/></svg>`
+            case 'tablet':
+              return `<svg class="${iconClass}" viewBox="0 0 24 24"><path d="M21 4H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 12H3V6h18v10z"/></svg>`
+            case 'watch':
+              return `<svg class="${iconClass}" viewBox="0 0 24 24"><path d="M20 12c0-2.54-1.19-4.81-3.04-6.27L16 0H8l-.95 5.73C5.19 7.19 4 9.46 4 12s1.19 4.81 3.05 6.27L8 24h8l.96-5.73C18.81 16.81 20 14.54 20 12zM6 12c0-3.31 2.69-6 6-6s6 2.69 6 6-2.69 6-6 6-6-2.69-6-6z"/></svg>`
+            case 'laptop':
+              return `<svg class="${iconClass}" viewBox="0 0 24 24"><path d="M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>`
+            default: // gps_tag
+              return `<svg class="${iconClass}" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>`
+          }
+        }
+
+        setCustomIcon(getDeviceIcon)
+        setSelectedIcon(getDeviceIcon)
       })
     }
   }, [])
@@ -198,139 +205,68 @@ export default function InteractiveMap({
     : defaultCenter
 
   return (
-    <div className="relative">
-      <link
-        rel="stylesheet"
-        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-        crossOrigin=""
-      />
-      
+    <div className="w-full h-full rounded-lg overflow-hidden shadow-lg" style={{ height }}>
       <MapContainer
         center={mapCenter}
-        zoom={selectedTag ? 16 : 10}
-        style={{ height, width: '100%' }}
-        className="rounded-lg z-0"
+        zoom={tags.length > 0 ? 13 : 4}
+        style={{ height: '100%', width: '100%' }}
         ref={mapRef}
         whenReady={() => setMap(mapRef.current)}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
 
-        {/* Geofences */}
-        {geofences.map((geofence) => (
-          <Circle
-            key={geofence.id}
-            center={geofence.center}
-            radius={geofence.radius}
-            pathOptions={{
-              color: geofence.color,
-              fillColor: geofence.color,
-              fillOpacity: 0.1,
-              weight: 2
-            }}
-          >
-            <Popup>
-              <div className="text-sm">
-                <h3 className="font-semibold">{geofence.name}</h3>
-                <p className="text-gray-600">Type: {geofence.type}</p>
-                <p className="text-gray-600">Radius: {geofence.radius}m</p>
-              </div>
-            </Popup>
-          </Circle>
-        ))}
-
-        {/* Location History Route */}
-        {showRoute && locationHistory.length > 1 && (
-          <Polyline
-            positions={locationHistory.map(loc => [loc.latitude, loc.longitude])}
-            pathOptions={{
-              color: '#3B82F6',
-              weight: 3,
-              opacity: 0.8,
-              dashArray: '5, 5'
-            }}
-          />
-        )}
-
-        {/* Tag Markers */}
+        {/* Render device markers */}
         {tags.map((tag) => {
           if (!tag.current_location?.latitude || !tag.current_location?.longitude) return null
-
+          
           const isSelected = selectedTag?.id === tag.id
-          const markerIcon = isSelected ? selectedIcon : customIcon
+          const icon = customIcon ? customIcon(tag.device_type, isSelected) : undefined
 
           return (
             <Marker
               key={tag.id}
               position={[tag.current_location.latitude, tag.current_location.longitude]}
-              icon={markerIcon}
+              icon={icon}
               eventHandlers={{
                 click: () => onTagClick?.(tag)
               }}
             >
               <Popup>
                 <div className="p-2 min-w-[200px]">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-lg">{tag.name}</h3>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      tag.is_active 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {tag.is_active ? 'Active' : 'Inactive'}
-                    </span>
+                  <div className="flex items-center gap-2 mb-2">
+                    <MapPin className="h-4 w-4 text-blue-600" />
+                    <h3 className="font-semibold text-gray-900">
+                      {tag.name || tag.tag_id}
+                    </h3>
                   </div>
                   
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center">
-                      <MapPin className="h-4 w-4 mr-2 text-gray-500" />
-                      <span className="text-gray-700">
-                        {tag.current_location.latitude.toFixed(6)}, {tag.current_location.longitude.toFixed(6)}
-                      </span>
+                  <div className="space-y-1 text-sm text-gray-600">
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium">Type:</span>
+                      <span className="capitalize">{tag.device_type.replace('_', ' ')}</span>
                     </div>
                     
-                    {tag.current_location.battery_level !== null && (
-                      <div className="flex items-center">
-                        <Battery className="h-4 w-4 mr-2 text-gray-500" />
-                        <span className={`font-medium ${
-                          (tag.current_location.battery_level ?? 0) > 20 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {tag.current_location.battery_level}%
-                        </span>
+                    {tag.battery_level && (
+                      <div className="flex items-center gap-1">
+                        <Battery className="h-3 w-3" />
+                        <span>{tag.battery_level}%</span>
                       </div>
                     )}
                     
-                    {tag.current_location.signal_strength && (
-                      <div className="flex items-center">
-                        <Signal className="h-4 w-4 mr-2 text-gray-500" />
-                        <span className="text-gray-700">{tag.current_location.signal_strength} dBm</span>
+                    {tag.last_seen_at && (
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        <span>{formatTimestamp(tag.last_seen_at)}</span>
                       </div>
                     )}
                     
-                    {tag.current_location.timestamp && (
-                      <div className="flex items-center">
-                        <Clock className="h-4 w-4 mr-2 text-gray-500" />
-                        <span className="text-gray-700">{formatTimestamp(tag.current_location.timestamp)}</span>
-                      </div>
-                    )}
-                    
-                    {tag.current_location.accuracy && (
-                      <div className="text-xs text-gray-500">
-                        Accuracy: ±{tag.current_location.accuracy}m
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="mt-3 pt-2 border-t">
-                    <button
-                      onClick={() => onTagClick?.(tag)}
-                      className="w-full bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
-                    >
-                      View Details
-                    </button>
+                    <div className="text-xs text-gray-500 mt-2">
+                      <div>Lat: {tag.current_location.latitude.toFixed(6)}</div>
+                      <div>Lng: {tag.current_location.longitude.toFixed(6)}</div>
+                    </div>
                   </div>
                 </div>
               </Popup>
@@ -338,70 +274,28 @@ export default function InteractiveMap({
           )
         })}
 
-        {/* Historical Location Markers */}
-        {showRoute && locationHistory.slice(1).map((location, index) => (
-          <Marker
-            key={`history-${index}`}
-            position={[location.latitude, location.longitude]}
-            icon={customIcon}
-            opacity={0.6}
-          >
-            <Popup>
-              <div className="text-sm">
-                <h4 className="font-semibold">Historical Location</h4>
-                <p className="text-gray-600">
-                  {location.timestamp ? formatTimestamp(location.timestamp) : 'Unknown time'}
-                </p>
-                {location.battery_level && (
-                  <p className="text-gray-600">Battery: {location.battery_level}%</p>
-                )}
-              </div>
-            </Popup>
-          </Marker>
+        {/* Render route if enabled */}
+        {showRoute && locationHistory.length > 1 && (
+          <Polyline
+            positions={locationHistory.map(loc => [loc.latitude, loc.longitude])}
+            color="blue"
+            weight={3}
+            opacity={0.7}
+          />
+        )}
+
+        {/* Render geofences */}
+        {geofences.map((geofence) => (
+          <Circle
+            key={geofence.id}
+            center={geofence.center}
+            radius={geofence.radius}
+            color={geofence.color}
+            fillColor={geofence.color}
+            fillOpacity={0.2}
+          />
         ))}
       </MapContainer>
-
-      {/* Map Controls */}
-      <div className="absolute top-2 right-2 z-[1000] space-y-2">
-        {realTimeUpdates && (
-          <div className="bg-white rounded-lg shadow-lg p-2 flex items-center">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
-            <span className="text-xs font-medium text-gray-700">Live</span>
-          </div>
-        )}
-        
-        {selectedTag && (
-          <div className="bg-white rounded-lg shadow-lg p-2">
-            <div className="text-xs font-medium text-gray-700">{selectedTag.name}</div>
-            <div className="text-xs text-gray-500">
-              Battery: {selectedTag.current_location?.battery_level ?? '--'}%
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Legend */}
-      {tags.length > 1 && (
-        <div className="absolute bottom-2 left-2 z-[1000] bg-white rounded-lg shadow-lg p-3">
-          <h4 className="text-xs font-semibold text-gray-700 mb-2">Legend</h4>
-          <div className="space-y-1 text-xs">
-            <div className="flex items-center">
-              <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-              <span>Active Tag</span>
-            </div>
-            <div className="flex items-center">
-              <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
-              <span>Selected Tag</span>
-            </div>
-            {showRoute && (
-              <div className="flex items-center">
-                <div className="w-4 h-1 bg-blue-500 mr-2" style={{ borderStyle: 'dashed' }}></div>
-                <span>Route History</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 } 
