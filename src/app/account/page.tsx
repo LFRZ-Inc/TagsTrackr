@@ -18,10 +18,13 @@ import {
   Star,
   Gift,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  X
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
+import AdBanner from '@/components/ads/AdBanner'
+import ProductTierSelection from '@/components/ProductTierSelection'
 
 interface UserProfile {
   id: string
@@ -48,6 +51,28 @@ interface UserStats {
   lastPing: string | null
 }
 
+interface UserData {
+  is_premium: boolean;
+  device_limit: number;
+  current_devices: number;
+  owned_tags: number;
+}
+
+interface Subscription {
+  id: string;
+  plan_type: string;
+  devices_covered: number;
+  price_monthly: number;
+  renewal_date: string;
+  is_active: boolean;
+}
+
+interface AdCredit {
+  balance: number;
+  total_earned: number;
+  total_redeemed: number;
+}
+
 export default function AccountPage() {
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -57,10 +82,14 @@ export default function AccountPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [activeTab, setActiveTab] = useState('profile')
+  const [activeTab, setActiveTab] = useState('overview')
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showAds, setShowAds] = useState(true)
   const [redemptionLoading, setRedemptionLoading] = useState(false)
+  const [userData, setUserData] = useState<UserData | null>(null)
+  const [subscription, setSubscription] = useState<Subscription | null>(null)
+  const [devices, setDevices] = useState<any[]>([])
+  const [showDevicePurchase, setShowDevicePurchase] = useState(false)
   
   const [profileData, setProfileData] = useState({
     full_name: '',
@@ -334,554 +363,471 @@ export default function AccountPage() {
     }
   }
 
+  const handleDevicePurchase = async (tier: 'standard' | 'returnable', adhesive?: boolean) => {
+    // In a real app, integrate with Stripe here
+    alert(`Device purchase simulation: ${tier} tag ${adhesive ? '(adhesive)' : '(non-adhesive)'}\nPrice: $${tier === 'standard' ? '10' : '15'}\n\nIn production, this would redirect to Stripe checkout.`)
+    setShowDevicePurchase(false)
+  }
+
+  const redeemCredits = async (amount: number, type: string) => {
+    try {
+      const response = await fetch('/api/ads/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount, redemption_type: type })
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        alert(data.message)
+        await loadAccountData()
+      } else {
+        alert(data.error || 'Failed to redeem credits')
+      }
+    } catch (error) {
+      console.error('Error redeeming credits:', error)
+      alert('Failed to redeem credits')
+    }
+  }
+
+  const upgradeToSubscription = async () => {
+    try {
+      const response = await fetch('/api/subscription/manage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create',
+          planType: 'basic',
+          devicesCount: 5,
+          stripeSubscriptionId: 'simulated_sub_' + Date.now()
+        })
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        alert(data.message)
+        await loadAccountData()
+      } else {
+        alert(data.error || 'Failed to create subscription')
+      }
+    } catch (error) {
+      console.error('Error creating subscription:', error)
+      alert('Failed to create subscription')
+    }
+  }
+
+  const loadAccountData = async () => {
+    try {
+      setLoading(true)
+
+      // Get user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      setUser(user)
+
+      // Load user data and subscription
+      const [userResponse, devicesResponse, subscriptionResponse, creditsResponse] = await Promise.all([
+        supabase.from('users').select('*').eq('id', user.id).single(),
+        fetch('/api/device/register'),
+        fetch('/api/subscription/manage'),
+        supabase.from('ad_credits').select('balance').eq('user_id', user.id).single()
+      ])
+
+      if (userResponse.data) {
+        setUserData(userResponse.data)
+      }
+
+      if (devicesResponse.ok) {
+        const devicesData = await devicesResponse.json()
+        setDevices([...(devicesData.ownedDevices || []), ...(devicesData.sharedDevices || [])])
+      }
+
+      if (subscriptionResponse.ok) {
+        const subData = await subscriptionResponse.json()
+        setSubscription(subData.subscription)
+        setUserData(prev => prev ? { ...prev, ...subData.user } : subData.user)
+      }
+
+      if (creditsResponse.data) {
+        setAdCredits(prev => ({ ...prev, balance: creditsResponse.data.balance || 0 }))
+      }
+
+    } catch (error) {
+      console.error('Error loading account data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-600"></div>
-          <p className="mt-4 text-gray-600">Loading account settings...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading account...</p>
         </div>
       </div>
     )
   }
 
+  const tabs = [
+    { id: 'overview', name: 'Overview', icon: User },
+    { id: 'devices', name: 'My Devices', icon: CreditCard },
+    { id: 'subscription', name: 'Subscription', icon: CreditCard },
+    { id: 'credits', name: 'Ad Credits', icon: Gift },
+    { id: 'sharing', name: 'Family Sharing', icon: User },
+    { id: 'settings', name: 'Settings', icon: MapPin }
+  ]
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <Link href="/dashboard" className="flex items-center text-gray-600 hover:text-gray-900">
-                <ArrowLeft className="h-5 w-5 mr-2" />
-                Back to Dashboard
-              </Link>
-            </div>
-            <div className="flex items-center">
-              <Link href="/" className="text-xl font-bold text-primary-600">
-                TagsTrackr
-              </Link>
-            </div>
+      {/* Show ads for non-premium users */}
+      {!userData?.is_premium && (
+        <div className="bg-white border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <AdBanner context="account" />
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        <div className="mb-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Account Settings</h1>
-          <p className="text-gray-600">Manage your account preferences and settings</p>
+          <p className="text-gray-600 mt-2">Manage your TagsTrackr account and preferences</p>
         </div>
 
-        {/* Tabs */}
-        <div className="bg-white shadow rounded-lg">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex">
-              <button
-                onClick={() => setActiveTab('profile')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 ${
-                  activeTab === 'profile'
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <User className="h-4 w-4 inline mr-2" />
-                Profile
-              </button>
-              <button
-                onClick={() => setActiveTab('security')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 ${
-                  activeTab === 'security'
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Lock className="h-4 w-4 inline mr-2" />
-                Security
-              </button>
-              <button
-                onClick={() => setActiveTab('ads')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 ${
-                  activeTab === 'ads'
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <DollarSign className="h-4 w-4 inline mr-2" />
-                Ads & Credits
-              </button>
-              <button
-                onClick={() => setActiveTab('subscription')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 ${
-                  activeTab === 'subscription'
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Star className="h-4 w-4 inline mr-2" />
-                Premium
-              </button>
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Sidebar */}
+          <div className="lg:w-64">
+            <nav className="space-y-1">
+              {tabs.map((tab) => {
+                const Icon = tab.icon
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+                      activeTab === tab.id
+                        ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-500'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {tab.name}
+                  </button>
+                )
+              })}
             </nav>
           </div>
 
-          <div className="p-6">
-            {error && (
-              <div className="mb-4 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
-                {error}
-              </div>
-            )}
-
-            {success && (
-              <div className="mb-4 bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-md text-sm">
-                {success}
-              </div>
-            )}
-
-            {/* Profile Tab */}
-            {activeTab === 'profile' && (
+          {/* Main Content */}
+          <div className="flex-1">
+            {/* Overview Tab */}
+            {activeTab === 'overview' && (
               <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Profile Information</h3>
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">Account Overview</h2>
                   
-                  <form onSubmit={handleProfileUpdate} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Email Address
-                      </label>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <input
-                          type="email"
-                          value={user?.email || ''}
-                          disabled
-                          className="pl-10 w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
-                        />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="text-center p-4 bg-gray-50 rounded-lg">
+                      <CreditCard className="h-8 w-8 text-blue-600 mx-auto mb-2" />
+                      <div className="text-2xl font-bold text-gray-900">{userData?.current_devices || 0}</div>
+                      <div className="text-sm text-gray-600">Active Devices</div>
+                    </div>
+                    
+                    <div className="text-center p-4 bg-gray-50 rounded-lg">
+                      <Star className="h-8 w-8 text-purple-600 mx-auto mb-2" />
+                      <div className="text-2xl font-bold text-gray-900">
+                        {userData?.is_premium ? 'Premium' : 'Free'}
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+                      <div className="text-sm text-gray-600">Account Type</div>
                     </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Full Name
-                      </label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <input
-                          type="text"
-                          value={profileData.full_name}
-                          onChange={(e) => setProfileData({ ...profileData, full_name: e.target.value })}
-                          className="pl-10 w-full p-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
-                          placeholder="Enter your full name"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Phone Number
-                      </label>
-                      <input
-                        type="tel"
-                        value={profileData.phone}
-                        onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
-                        placeholder="Enter your phone number"
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      className="flex items-center px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
-                    >
-                      <Save className="h-4 w-4 mr-2" />
-                      {saving ? 'Saving...' : 'Save Changes'}
-                    </button>
-                  </form>
-                </div>
-
-                {/* Account Stats */}
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Account Statistics</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-blue-50 p-4 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">{stats?.totalTags || 0}</div>
-                      <div className="text-sm text-blue-700">Total Tags</div>
-                    </div>
-                    <div className="bg-green-50 p-4 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">{stats?.activeTags || 0}</div>
-                      <div className="text-sm text-green-700">Active Tags</div>
-                    </div>
-                    <div className="bg-purple-50 p-4 rounded-lg">
-                      <div className="text-2xl font-bold text-purple-600">{stats?.totalPings || 0}</div>
-                      <div className="text-sm text-purple-700">GPS Pings</div>
-                    </div>
-                    <div className="bg-orange-50 p-4 rounded-lg">
-                      <div className="text-2xl font-bold text-orange-600">
-                        {stats?.lastPing ? new Date(stats.lastPing).toLocaleDateString() : 'Never'}
-                      </div>
-                      <div className="text-sm text-orange-700">Last Activity</div>
+                    
+                    <div className="text-center p-4 bg-gray-50 rounded-lg">
+                      <DollarSign className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                      <div className="text-2xl font-bold text-gray-900">${adCredits?.credit_balance.toFixed(2) || '0.00'}</div>
+                      <div className="text-sm text-gray-600">Ad Credits</div>
                     </div>
                   </div>
+
+                  {!userData?.is_premium && (
+                    <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                      <h3 className="font-semibold text-blue-900 mb-2">Upgrade to Premium</h3>
+                      <p className="text-blue-800 text-sm mb-3">
+                        Get unlimited devices, real-time alerts, family sharing, and no ads for just $5/month.
+                      </p>
+                      <button
+                        onClick={upgradeToSubscription}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm"
+                      >
+                        Upgrade Now
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
 
-            {/* Security Tab */}
-            {activeTab === 'security' && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Change Password</h3>
-                  
-                  <form onSubmit={handlePasswordChange} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        New Password
-                      </label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <input
-                          type={showNewPassword ? 'text' : 'password'}
-                          value={passwordData.newPassword}
-                          onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                          className="pl-10 pr-10 w-full p-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
-                          placeholder="Enter new password"
-                          minLength={6}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowNewPassword(!showNewPassword)}
-                          className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                        >
-                          {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Confirm New Password
-                      </label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <input
-                          type="password"
-                          value={passwordData.confirmPassword}
-                          onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                          className="pl-10 w-full p-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
-                          placeholder="Confirm new password"
-                        />
-                      </div>
-                    </div>
-
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <button
-                      type="submit"
-                      disabled={saving}
-                      className="flex items-center px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
+                      onClick={() => setShowDevicePurchase(true)}
+                      className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
                     >
-                      <Save className="h-4 w-4 mr-2" />
-                      {saving ? 'Updating...' : 'Update Password'}
+                      <CreditCard className="h-6 w-6 text-blue-600 mb-2" />
+                      <div className="font-medium text-gray-900">Purchase Device</div>
+                      <div className="text-sm text-gray-600">Add a new TagsTrackr device</div>
                     </button>
-                  </form>
-                </div>
-
-                {/* Danger Zone */}
-                <div className="border-t pt-6">
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <h3 className="text-lg font-medium text-red-900 mb-2">Danger Zone</h3>
-                    <p className="text-sm text-red-700 mb-4">
-                      Once you delete your account, there is no going back. Please be certain.
-                    </p>
+                    
                     <button
-                      onClick={handleDeleteAccount}
-                      disabled={saving}
-                      className="flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+                      onClick={() => setActiveTab('sharing')}
+                      className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
                     >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete Account
+                      <User className="h-6 w-6 text-green-600 mb-2" />
+                      <div className="font-medium text-gray-900">Share Device</div>
+                      <div className="text-sm text-gray-600">Give family access to your tags</div>
                     </button>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Ads & Credits Tab */}
-            {activeTab === 'ads' && (
+            {/* Devices Tab */}
+            {activeTab === 'devices' && (
               <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Ad Credits</h3>
-                  
-                  {profile?.is_premium ? (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-                      <div className="flex items-center mb-3">
-                        <Star className="h-6 w-6 text-yellow-500 mr-2" />
-                        <h4 className="text-lg font-semibold text-yellow-900">Premium Member</h4>
-                      </div>
-                      <p className="text-yellow-800 mb-4">
-                        As a premium member, you don't see ads and don't earn ad credits. Enjoy an ad-free experience!
-                      </p>
-                      <p className="text-sm text-yellow-700">
-                        Want to support us further? You can still view sponsored content optionally to earn bonus credits.
-                      </p>
+                <div className="bg-white rounded-lg shadow p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-semibold text-gray-900">My Devices</h2>
+                    <button
+                      onClick={() => setShowDevicePurchase(true)}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+                    >
+                      Add Device
+                    </button>
+                  </div>
+
+                  {devices.length === 0 ? (
+                    <div className="text-center py-8">
+                      <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No devices yet</h3>
+                      <p className="text-gray-600 mb-4">Get started by purchasing your first TagsTrackr device.</p>
+                      <button
+                        onClick={() => setShowDevicePurchase(true)}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+                      >
+                        Purchase Device
+                      </button>
                     </div>
                   ) : (
-                    <div className="space-y-6">
-                      {/* Credits Overview */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                          <div className="flex items-center">
-                            <DollarSign className="h-5 w-5 text-green-600 mr-2" />
-                            <div>
-                              <div className="text-2xl font-bold text-green-900">
-                                ${adCredits?.credit_balance.toFixed(2) || '0.00'}
-                              </div>
-                              <div className="text-sm text-green-700">Current Balance</div>
-                            </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {devices.map((device) => (
+                        <div key={device.id} className="border border-gray-200 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-medium text-gray-900">{device.tag_id}</h3>
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              device.type === 'standard' 
+                                ? 'bg-blue-100 text-blue-800' 
+                                : 'bg-orange-100 text-orange-800'
+                            }`}>
+                              {device.type}
+                            </span>
+                          </div>
+                          <div className="space-y-1 text-sm text-gray-600">
+                            <div>Status: {device.is_active ? 'Active' : 'Inactive'}</div>
+                            <div>Data: {device.data_remaining_mb || 0} MB remaining</div>
+                            {device.battery_level && (
+                              <div>Battery: {device.battery_level}%</div>
+                            )}
                           </div>
                         </div>
-                        
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                          <div className="flex items-center">
-                            <Eye className="h-5 w-5 text-blue-600 mr-2" />
-                            <div>
-                              <div className="text-2xl font-bold text-blue-900">
-                                {adCredits?.daily_views_count || 0}/5
-                              </div>
-                              <div className="text-sm text-blue-700">Daily Views</div>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                          <div className="flex items-center">
-                            <Gift className="h-5 w-5 text-purple-600 mr-2" />
-                            <div>
-                              <div className="text-2xl font-bold text-purple-900">
-                                ${adCredits?.total_earned.toFixed(2) || '0.00'}
-                              </div>
-                              <div className="text-sm text-purple-700">Total Earned</div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* How it works */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                        <h4 className="font-semibold text-blue-900 mb-3">How Ad Credits Work</h4>
-                        <ul className="space-y-2 text-blue-800 text-sm">
-                          <li className="flex items-start">
-                            <span className="inline-block w-2 h-2 bg-blue-600 rounded-full mt-2 mr-3"></span>
-                            Earn $0.01 for each ad you view (up to 5 per day)
-                          </li>
-                          <li className="flex items-start">
-                            <span className="inline-block w-2 h-2 bg-blue-600 rounded-full mt-2 mr-3"></span>
-                            Redeem $5.00 in credits for tag discounts or Premium trials
-                          </li>
-                          <li className="flex items-start">
-                            <span className="inline-block w-2 h-2 bg-blue-600 rounded-full mt-2 mr-3"></span>
-                            All ads are contextual and non-intrusive
-                          </li>
-                        </ul>
-                      </div>
-
-                      {/* Redemption Options */}
-                      {adCredits && adCredits.credit_balance >= 5.0 && (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-                          <h4 className="font-semibold text-green-900 mb-4">Redeem Your Credits</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <button
-                              onClick={() => handleRedeemCredits('tag_discount', 5.0)}
-                              disabled={redemptionLoading}
-                              className="flex items-center justify-center p-4 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                            >
-                              <Gift className="h-5 w-5 mr-2" />
-                              $5 Tag Discount
-                            </button>
-                            <button
-                              onClick={() => handleRedeemCredits('premium_trial', 5.0)}
-                              disabled={redemptionLoading}
-                              className="flex items-center justify-center p-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
-                            >
-                              <Star className="h-5 w-5 mr-2" />
-                              1 Month Premium
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Ad Preferences */}
-                      <div className="border-t pt-6">
-                        <h4 className="font-semibold text-gray-900 mb-4">Ad Preferences</h4>
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <label className="text-sm font-medium text-gray-700">
-                                Show helpful ads
-                              </label>
-                              <p className="text-xs text-gray-500">
-                                Support TagsTrackr by viewing relevant ads and earn credits
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => setShowAds(!showAds)}
-                              className="relative"
-                            >
-                              {showAds ? (
-                                <ToggleRight className="h-6 w-6 text-green-500" />
-                              ) : (
-                                <ToggleLeft className="h-6 w-6 text-gray-400" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                      ))}
                     </div>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Premium Tab */}
+            {/* Subscription Tab */}
             {activeTab === 'subscription' && (
               <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Premium Subscription</h3>
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">Subscription</h2>
                   
-                  {profile?.is_premium ? (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-                      <div className="flex items-center mb-4">
-                        <Star className="h-6 w-6 text-yellow-500 mr-2" />
-                        <h4 className="text-xl font-semibold text-yellow-900">Premium Active</h4>
+                  {subscription ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-6">
+                        <div>
+                          <h3 className="text-lg font-medium text-gray-900 capitalize">
+                            {subscription.plan_type} Plan
+                          </h3>
+                          <p className="text-gray-600">
+                            ${subscription.price_monthly}/month • {subscription.devices_covered} devices covered
+                          </p>
+                        </div>
+                        <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
+                          Active
+                        </span>
                       </div>
-                      <p className="text-yellow-800 mb-4">
-                        You're currently enjoying all Premium benefits including ad-free experience, unlimited tags, and priority support.
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-white rounded-lg p-4">
-                          <h5 className="font-semibold text-gray-900 mb-2">Premium Features</h5>
-                          <ul className="space-y-1 text-sm text-gray-700">
-                            <li>✓ No ads</li>
-                            <li>✓ Unlimited GPS tags</li>
-                            <li>✓ 1-year location history</li>
-                            <li>✓ Priority support</li>
-                            <li>✓ Advanced analytics</li>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <h4 className="font-medium text-gray-900 mb-2">Current Benefits</h4>
+                          <ul className="text-sm text-gray-600 space-y-1">
+                            <li>• No advertisements</li>
+                            <li>• Real-time location tracking</li>
+                            <li>• Geofence alerts</li>
+                            <li>• Family sharing</li>
+                            <li>• Movement detection</li>
+                            <li>• Unlimited location history</li>
                           </ul>
                         </div>
-                        <div className="bg-white rounded-lg p-4">
-                          <h5 className="font-semibold text-gray-900 mb-2">Billing</h5>
-                          <p className="text-sm text-gray-700 mb-2">$5.00/month</p>
-                          <p className="text-xs text-gray-500">Next billing: 30 days from activation</p>
+                        
+                        <div>
+                          <h4 className="font-medium text-gray-900 mb-2">Billing Details</h4>
+                          <div className="text-sm text-gray-600 space-y-1">
+                            <div>Next billing: {new Date(subscription.renewal_date).toLocaleDateString()}</div>
+                            <div>Devices used: {userData?.current_devices || 0} / {subscription.devices_covered}</div>
+                          </div>
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-6">
-                      {/* Current Plan */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <h4 className="text-lg font-semibold text-blue-900">Free Plan</h4>
-                            <p className="text-blue-700">Perfect for getting started</p>
-                          </div>
-                          <div className="text-2xl font-bold text-blue-900">$0/month</div>
+                    <div className="text-center py-8">
+                      <Star className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No Active Subscription</h3>
+                      <p className="text-gray-600 mb-6">
+                        Upgrade to Premium for advanced features and unlimited devices.
+                      </p>
+                      
+                      <div className="bg-blue-50 rounded-lg p-6 mb-6">
+                        <h4 className="font-semibold text-blue-900 mb-3">Premium Features ($5/month)</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-800">
+                          <ul className="space-y-1">
+                            <li>• No advertisements</li>
+                            <li>• Up to 5 devices</li>
+                            <li>• Real-time alerts</li>
+                          </ul>
+                          <ul className="space-y-1">
+                            <li>• Family sharing</li>
+                            <li>• Geofence tracking</li>
+                            <li>• Unlimited history</li>
+                          </ul>
                         </div>
-                        
-                        <ul className="space-y-2 text-blue-800">
-                          <li className="flex items-center">
-                            <MapPin className="h-4 w-4 mr-2" />
-                            Up to 5 GPS tags
-                          </li>
-                          <li className="flex items-center">
-                            <Eye className="h-4 w-4 mr-2" />
-                            See helpful ads (earn credits!)
-                          </li>
-                          <li className="flex items-center">
-                            <MapPin className="h-4 w-4 mr-2" />
-                            Real-time tracking
-                          </li>
-                          <li className="flex items-center">
-                            <MapPin className="h-4 w-4 mr-2" />
-                            30-day location history
-                          </li>
-                        </ul>
                       </div>
+                      
+                      <button
+                        onClick={upgradeToSubscription}
+                        className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700"
+                      >
+                        Start Premium - $5/month
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
-                      {/* Premium Plan */}
-                      <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-2 border-yellow-300 rounded-lg p-6 relative">
-                        <div className="absolute -top-3 left-6">
-                          <span className="bg-yellow-400 text-yellow-900 px-3 py-1 rounded-full text-sm font-bold">
-                            RECOMMENDED
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <div className="flex items-center">
-                              <Star className="h-6 w-6 text-yellow-600 mr-2" />
-                              <h4 className="text-xl font-semibold text-yellow-900">Premium Plan</h4>
-                            </div>
-                            <p className="text-yellow-800">For serious travelers and businesses</p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-3xl font-bold text-yellow-900">$5</div>
-                            <div className="text-yellow-700">/month</div>
-                          </div>
-                        </div>
-                        
-                        <ul className="space-y-2 text-yellow-800 mb-6">
-                          <li className="flex items-center">
-                            <span className="w-2 h-2 bg-yellow-600 rounded-full mr-3"></span>
-                            No ads - completely ad-free experience
-                          </li>
-                          <li className="flex items-center">
-                            <span className="w-2 h-2 bg-yellow-600 rounded-full mr-3"></span>
-                            Unlimited GPS tags
-                          </li>
-                          <li className="flex items-center">
-                            <span className="w-2 h-2 bg-yellow-600 rounded-full mr-3"></span>
-                            1-year location history
-                          </li>
-                          <li className="flex items-center">
-                            <span className="w-2 h-2 bg-yellow-600 rounded-full mr-3"></span>
-                            Priority customer support
-                          </li>
-                          <li className="flex items-center">
-                            <span className="w-2 h-2 bg-yellow-600 rounded-full mr-3"></span>
-                            Advanced analytics & insights
-                          </li>
-                          <li className="flex items-center">
-                            <span className="w-2 h-2 bg-yellow-600 rounded-full mr-3"></span>
-                            Custom geofence zones
-                          </li>
-                        </ul>
+            {/* Ad Credits Tab */}
+            {activeTab === 'credits' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">Ad Credits</h2>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div className="text-center p-4 bg-green-50 rounded-lg">
+                      <div className="text-2xl font-bold text-green-600">${adCredits?.credit_balance.toFixed(2)}</div>
+                      <div className="text-sm text-gray-600">Available Balance</div>
+                    </div>
+                    
+                    <div className="text-center p-4 bg-blue-50 rounded-lg">
+                      <div className="text-2xl font-bold text-blue-600">${adCredits?.total_earned.toFixed(2)}</div>
+                      <div className="text-sm text-gray-600">Total Earned</div>
+                    </div>
+                    
+                    <div className="text-center p-4 bg-purple-50 rounded-lg">
+                      <div className="text-2xl font-bold text-purple-600">${adCredits?.total_redeemed.toFixed(2)}</div>
+                      <div className="text-sm text-gray-600">Total Redeemed</div>
+                    </div>
+                  </div>
 
+                  {adCredits?.credit_balance >= 5 ? (
+                    <div className="bg-green-50 rounded-lg p-6">
+                      <h3 className="font-semibold text-green-900 mb-3">Redeem Your Credits</h3>
+                      <p className="text-green-800 text-sm mb-4">
+                        You have enough credits to redeem! Choose how you'd like to use them:
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <button
-                          onClick={handlePremiumUpgrade}
-                          disabled={saving}
-                          className="w-full flex items-center justify-center px-6 py-3 bg-yellow-600 text-white font-semibold rounded-lg hover:bg-yellow-700 disabled:opacity-50 transition-colors"
+                          onClick={() => redeemCredits(5, 'tag_discount')}
+                          className="p-4 border border-green-200 rounded-lg hover:bg-green-100 text-left"
                         >
-                          <Star className="h-5 w-5 mr-2" />
-                          {saving ? 'Upgrading...' : 'Upgrade to Premium'}
+                          <div className="font-medium text-green-900">$5 Tag Discount</div>
+                          <div className="text-sm text-green-700">Apply to your next device purchase</div>
+                        </button>
+                        
+                        <button
+                          onClick={() => redeemCredits(5, 'subscription_credit')}
+                          className="p-4 border border-green-200 rounded-lg hover:bg-green-100 text-left"
+                        >
+                          <div className="font-medium text-green-900">1 Month Premium</div>
+                          <div className="text-sm text-green-700">Free month of Premium subscription</div>
                         </button>
                       </div>
-
-                      {/* Privacy Notice */}
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                        <h5 className="font-semibold text-gray-900 mb-2">Your Data Is Yours. Your Screen Helps Us Grow.</h5>
-                        <p className="text-sm text-gray-700 mb-2">
-                          We show helpful, non-targeted ads only to users on the free plan. These are selected based on what you're doing — not who you are.
-                        </p>
-                        <p className="text-sm text-gray-700">
-                          We don't sell your data, track your behavior, or let third parties follow you. We're here to track items, not people.
+                    </div>
+                  ) : (
+                    <div className="bg-gray-50 rounded-lg p-6">
+                      <h3 className="font-medium text-gray-900 mb-2">How to Earn Credits</h3>
+                      <ul className="text-sm text-gray-600 space-y-1">
+                        <li>• View ads on the dashboard: $0.01 each (limit 5/day)</li>
+                        <li>• Participate in surveys: $0.25 each</li>
+                        <li>• Refer friends: $1.00 per signup</li>
+                        <li>• Report found tags: $5.00 reward</li>
+                      </ul>
+                      <div className="mt-4 p-3 bg-blue-100 rounded-md">
+                        <p className="text-sm text-blue-800">
+                          💡 You need $5.00 to redeem credits. Keep viewing ads and you'll get there!
                         </p>
                       </div>
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Other tabs would go here */}
+            {activeTab === 'sharing' && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Family Sharing</h2>
+                <p className="text-gray-600">Family sharing component would be integrated here.</p>
+              </div>
+            )}
+
+            {activeTab === 'settings' && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Settings</h2>
+                <p className="text-gray-600">Account settings would be here.</p>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Device Purchase Modal */}
+      {showDevicePurchase && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-screen overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-gray-900">Purchase Device</h2>
+              <button
+                onClick={() => setShowDevicePurchase(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <ProductTierSelection onSelectTier={handleDevicePurchase} />
+          </div>
+        </div>
+      )}
     </div>
   )
 } 

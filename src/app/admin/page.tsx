@@ -1,314 +1,463 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { MapPin, Settings, Play, Square, RotateCcw, Database, Zap, TestTube, Shield } from 'lucide-react'
 import { simulateRoute } from '@/lib/pingSimulator'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { useAuthStore } from '@/lib/store'
+import { useRouter } from 'next/navigation'
 
-export default function AdminPage() {
-  const [isSimulating, setIsSimulating] = useState(false)
-  const [selectedRoute, setSelectedRoute] = useState('airport')
-  const [tagId, setTagId] = useState('TEST-001')
-  const [simulationLog, setSimulationLog] = useState<string[]>([])
+interface DeviceInventory {
+  tag_id: string
+  type: string
+  is_active: boolean
+  is_rented: boolean
+  owner_email: string | null
+  data_remaining_mb: number
+  battery_level: number | null
+  last_ping_at: string | null
+  created_at: string
+}
 
-  const routes = {
-    airport: {
-      name: 'Airport Journey',
-      description: 'Simulates luggage from check-in to baggage claim',
-      duration: '45 minutes'
-    },
-    shipping: {
-      name: 'Package Delivery',
-      description: 'Warehouse to doorstep delivery route',
-      duration: '2 hours'
-    },
-    hotel: {
-      name: 'Hotel Transfer',
-      description: 'Airport to hotel transportation',
-      duration: '30 minutes'
+interface RentalOverview {
+  id: string
+  tag_id: string
+  renter_email: string
+  rented_at: string
+  returned_at: string | null
+  return_approved: boolean
+  refund_processed: boolean
+  refund_amount: number
+  data_remaining_mb: number
+}
+
+interface SubscriptionAnalytics {
+  plan_type: string
+  active_subscriptions: number
+  monthly_revenue: number
+  avg_devices_per_sub: number
+}
+
+export default function AdminDashboard() {
+  const { user } = useAuthStore()
+  const router = useRouter()
+  const supabase = createClientComponentClient()
+  
+  const [activeTab, setActiveTab] = useState('inventory')
+  const [inventory, setInventory] = useState<DeviceInventory[]>([])
+  const [rentals, setRentals] = useState<RentalOverview[]>([])
+  const [analytics, setAnalytics] = useState<SubscriptionAnalytics[]>([])
+  const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      setUser(user)
+
+      // Check if user is admin
+      const adminEmails = ['admin@tagstrackr.com', 'contact@tagstrackr.com']
+      const userEmail = user.email?.toLowerCase() || ''
+      
+      if (adminEmails.includes(userEmail) || userEmail.includes('admin')) {
+        setIsAdmin(true)
+        await loadAdminData()
+      } else {
+        router.push('/dashboard')
+      }
     }
-  }
 
-  const startSimulation = async () => {
-    if (isSimulating) return
-    
-    setIsSimulating(true)
-    setSimulationLog([])
-    
-    const log = (message: string) => {
-      setSimulationLog(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`])
-    }
+    checkUser()
+  }, [router, supabase])
 
-    log(`Starting ${routes[selectedRoute as keyof typeof routes].name} simulation for tag ${tagId}`)
-    
+  const loadAdminData = async () => {
     try {
-      await simulateRoute(tagId, selectedRoute, (ping: any) => {
-        log(`Ping sent - Lat: ${ping.latitude.toFixed(6)}, Lng: ${ping.longitude.toFixed(6)}`)
-      })
-      log('Simulation completed successfully')
+      setLoading(true)
+      
+      // Load device inventory
+      const { data: inventoryData, error: inventoryError } = await supabase
+        .from('admin_device_inventory')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (inventoryError) {
+        console.error('Error loading inventory:', inventoryError)
+      } else {
+        setInventory(inventoryData || [])
+      }
+
+      // Load rental overview
+      const { data: rentalData, error: rentalError } = await supabase
+        .from('admin_rental_overview')
+        .select('*')
+        .order('rented_at', { ascending: false })
+
+      if (rentalError) {
+        console.error('Error loading rentals:', rentalError)
+      } else {
+        setRentals(rentalData || [])
+      }
+
+      // Load subscription analytics
+      const { data: analyticsData, error: analyticsError } = await supabase
+        .from('admin_subscription_analytics')
+        .select('*')
+
+      if (analyticsError) {
+        console.error('Error loading analytics:', analyticsError)
+      } else {
+        setAnalytics(analyticsData || [])
+      }
+
     } catch (error) {
-      log(`Simulation error: ${error}`)
+      console.error('Error loading admin data:', error)
     } finally {
-      setIsSimulating(false)
+      setLoading(false)
     }
   }
 
-  const stopSimulation = () => {
-    setIsSimulating(false)
-    setSimulationLog(prev => [...prev, `${new Date().toLocaleTimeString()}: Simulation stopped by user`])
+  const approveReturn = async (rentalId: string) => {
+    try {
+      const { error } = await supabase
+        .from('rental_history')
+        .update({ return_approved: true })
+        .eq('id', rentalId)
+
+      if (error) {
+        console.error('Error approving return:', error)
+        alert('Failed to approve return')
+      } else {
+        alert('Return approved successfully!')
+        await loadAdminData()
+      }
+    } catch (error) {
+      console.error('Error approving return:', error)
+      alert('Failed to approve return')
+    }
   }
 
-  const clearLog = () => {
-    setSimulationLog([])
+  const processRefund = async (rentalId: string) => {
+    try {
+      const { error } = await supabase
+        .from('rental_history')
+        .update({ refund_processed: true })
+        .eq('id', rentalId)
+
+      if (error) {
+        console.error('Error processing refund:', error)
+        alert('Failed to process refund')
+      } else {
+        alert('Refund processed successfully!')
+        await loadAdminData()
+      }
+    } catch (error) {
+      console.error('Error processing refund:', error)
+      alert('Failed to process refund')
+    }
   }
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h1>
+          <p className="text-gray-600">You do not have admin privileges.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading admin dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  const totalRevenue = analytics.reduce((sum, item) => sum + item.monthly_revenue, 0)
+  const totalSubscriptions = analytics.reduce((sum, item) => sum + item.active_subscriptions, 0)
+  const activeDevices = inventory.filter(device => device.is_active).length
+  const pendingReturns = rentals.filter(rental => rental.returned_at && !rental.return_approved).length
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center">
-              <Shield className="h-6 w-6 text-red-600" />
-              <span className="ml-2 text-lg font-bold text-gray-900">TagsTrackr Admin</span>
-            </div>
-            <nav className="flex items-center space-x-4">
-              <Link href="/" className="text-gray-500 hover:text-gray-900">
-                ← Back to Site
-              </Link>
-              <Link href="/dashboard" className="text-gray-500 hover:text-gray-900">
-                Dashboard
-              </Link>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">TagsTrackr Admin Dashboard</h1>
+          <p className="text-gray-600 mt-2">Manage devices, rentals, and subscriptions</p>
+        </div>
+
+        {/* Overview Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-sm font-medium text-gray-500">Monthly Revenue</h3>
+            <p className="text-2xl font-bold text-green-600">${totalRevenue.toFixed(2)}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-sm font-medium text-gray-500">Active Subscriptions</h3>
+            <p className="text-2xl font-bold text-blue-600">{totalSubscriptions}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-sm font-medium text-gray-500">Active Devices</h3>
+            <p className="text-2xl font-bold text-purple-600">{activeDevices}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-sm font-medium text-gray-500">Pending Returns</h3>
+            <p className="text-2xl font-bold text-orange-600">{pendingReturns}</p>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white rounded-lg shadow">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              <button
+                onClick={() => setActiveTab('inventory')}
+                className={`py-4 px-6 text-sm font-medium ${
+                  activeTab === 'inventory'
+                    ? 'border-b-2 border-blue-500 text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Device Inventory
+              </button>
+              <button
+                onClick={() => setActiveTab('rentals')}
+                className={`py-4 px-6 text-sm font-medium ${
+                  activeTab === 'rentals'
+                    ? 'border-b-2 border-blue-500 text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Rental Management
+              </button>
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`py-4 px-6 text-sm font-medium ${
+                  activeTab === 'analytics'
+                    ? 'border-b-2 border-blue-500 text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Analytics
+              </button>
             </nav>
           </div>
-        </div>
-      </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Warning Banner */}
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-8">
-          <div className="flex">
-            <Shield className="h-5 w-5 text-red-400" />
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">
-                Admin Panel - Development Environment Only
-              </h3>
-              <div className="mt-2 text-sm text-red-700">
-                <p>This page contains testing and development tools. Use with caution in production.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Ping Simulator */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <div className="flex items-center mb-6">
-                <TestTube className="h-6 w-6 text-blue-600" />
-                <h2 className="ml-2 text-xl font-semibold text-gray-900">GPS Ping Simulator</h2>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tag ID
-                  </label>
-                  <input
-                    type="text"
-                    value={tagId}
-                    onChange={(e) => setTagId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter tag ID"
-                    disabled={isSimulating}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Route Type
-                  </label>
-                  <select
-                    value={selectedRoute}
-                    onChange={(e) => setSelectedRoute(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={isSimulating}
-                  >
-                    {Object.entries(routes).map(([key, route]) => (
-                      <option key={key} value={key}>
-                        {route.name} ({route.duration})
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-sm text-gray-500">
-                    {routes[selectedRoute as keyof typeof routes].description}
-                  </p>
-                </div>
-
-                <div className="flex space-x-3">
-                  <button
-                    onClick={startSimulation}
-                    disabled={isSimulating || !tagId.trim()}
-                    className={`flex items-center px-4 py-2 rounded-md font-medium ${
-                      isSimulating || !tagId.trim()
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-green-600 text-white hover:bg-green-700'
-                    }`}
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    {isSimulating ? 'Simulating...' : 'Start Simulation'}
-                  </button>
-
-                  {isSimulating && (
-                    <button
-                      onClick={stopSimulation}
-                      className="flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium"
-                    >
-                      <Square className="h-4 w-4 mr-2" />
-                      Stop
-                    </button>
-                  )}
-
-                  <button
-                    onClick={clearLog}
-                    className="flex items-center px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 font-medium"
-                  >
-                    <RotateCcw className="h-4 w-4 mr-2" />
-                    Clear Log
-                  </button>
+          <div className="p-6">
+            {/* Device Inventory Tab */}
+            {activeTab === 'inventory' && (
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Device Inventory</h2>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Tag ID
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Type
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Owner
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Data Remaining
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Battery
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Last Ping
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {inventory.map((device) => (
+                        <tr key={device.tag_id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {device.tag_id}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              device.type === 'standard' 
+                                ? 'bg-blue-100 text-blue-800' 
+                                : 'bg-orange-100 text-orange-800'
+                            }`}>
+                              {device.type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              device.is_active 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {device.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                            {device.is_rented && (
+                              <span className="ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                Rented
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {device.owner_email || 'Unassigned'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {device.data_remaining_mb} MB
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {device.battery_level ? `${device.battery_level}%` : 'Unknown'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {device.last_ping_at 
+                              ? new Date(device.last_ping_at).toLocaleDateString()
+                              : 'Never'
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
+            )}
 
-              {/* Simulation Log */}
-              <div className="mt-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-3">Simulation Log</h3>
-                <div className="bg-gray-900 text-green-400 p-4 rounded-md h-64 overflow-y-auto font-mono text-sm">
-                  {simulationLog.length > 0 ? (
-                    simulationLog.map((log, index) => (
-                      <div key={index} className="mb-1">
-                        {log}
+            {/* Rental Management Tab */}
+            {activeTab === 'rentals' && (
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Rental Management</h2>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Tag ID
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Renter
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Rented Date
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Return Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Refund
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {rentals.map((rental) => (
+                        <tr key={rental.id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {rental.tag_id}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {rental.renter_email}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(rental.rented_at).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {rental.returned_at ? (
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                rental.return_approved 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : 'bg-yellow-100 text-yellow-800'
+                              }`}>
+                                {rental.return_approved ? 'Approved' : 'Pending Review'}
+                              </span>
+                            ) : (
+                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                                In Use
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              rental.refund_processed 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {rental.refund_processed ? 'Processed' : `$${rental.refund_amount} Pending`}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                            {rental.returned_at && !rental.return_approved && (
+                              <button
+                                onClick={() => approveReturn(rental.id)}
+                                className="text-green-600 hover:text-green-900"
+                              >
+                                Approve Return
+                              </button>
+                            )}
+                            {rental.return_approved && !rental.refund_processed && (
+                              <button
+                                onClick={() => processRefund(rental.id)}
+                                className="text-blue-600 hover:text-blue-900"
+                              >
+                                Process Refund
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Analytics Tab */}
+            {activeTab === 'analytics' && (
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Subscription Analytics</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {analytics.map((item) => (
+                    <div key={item.plan_type} className="bg-gray-50 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4 capitalize">
+                        {item.plan_type} Plan
+                      </h3>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Active Subscriptions:</span>
+                          <span className="font-semibold">{item.active_subscriptions}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Monthly Revenue:</span>
+                          <span className="font-semibold text-green-600">${item.monthly_revenue.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Avg Devices per Sub:</span>
+                          <span className="font-semibold">{item.avg_devices_per_sub.toFixed(1)}</span>
+                        </div>
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-gray-500">No simulation running... Start a simulation to see logs here.</div>
-                  )}
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Quick Actions & Tools */}
-          <div className="space-y-6">
-            {/* System Status */}
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <div className="flex items-center mb-4">
-                <Database className="h-5 w-5 text-green-600" />
-                <h3 className="ml-2 text-lg font-medium text-gray-900">System Status</h3>
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Database</span>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    Connected
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">API Endpoints</span>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    Online
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">GPS Tracking</span>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                    Simulated
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <div className="flex items-center mb-4">
-                <Zap className="h-5 w-5 text-yellow-600" />
-                <h3 className="ml-2 text-lg font-medium text-gray-900">Quick Actions</h3>
-              </div>
-              <div className="space-y-3">
-                <Link
-                  href="/register-tag"
-                  className="w-full bg-blue-50 text-blue-700 px-3 py-2 rounded-md hover:bg-blue-100 text-sm font-medium text-center block"
-                >
-                  Register Test Tag
-                </Link>
-                <Link
-                  href="/dashboard"
-                  className="w-full bg-green-50 text-green-700 px-3 py-2 rounded-md hover:bg-green-100 text-sm font-medium text-center block"
-                >
-                  View Dashboard
-                </Link>
-                <button className="w-full bg-purple-50 text-purple-700 px-3 py-2 rounded-md hover:bg-purple-100 text-sm font-medium">
-                  Generate Sample Data
-                </button>
-                <button className="w-full bg-red-50 text-red-700 px-3 py-2 rounded-md hover:bg-red-100 text-sm font-medium">
-                  Clear Test Data
-                </button>
-              </div>
-            </div>
-
-            {/* Development Tools */}
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <div className="flex items-center mb-4">
-                <Settings className="h-5 w-5 text-gray-600" />
-                <h3 className="ml-2 text-lg font-medium text-gray-900">Dev Tools</h3>
-              </div>
-              <div className="space-y-3">
-                <div className="text-sm">
-                  <span className="text-gray-600">Environment:</span>
-                  <span className="ml-2 font-medium text-orange-600">Development</span>
-                </div>
-                <div className="text-sm">
-                  <span className="text-gray-600">Next.js:</span>
-                  <span className="ml-2 font-medium">14.0.4</span>
-                </div>
-                <div className="text-sm">
-                  <span className="text-gray-600">Build:</span>
-                  <span className="ml-2 font-medium text-green-600">Ready</span>
-                </div>
-              </div>
-            </div>
-
-            {/* API Endpoints */}
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <div className="flex items-center mb-4">
-                <MapPin className="h-5 w-5 text-blue-600" />
-                <h3 className="ml-2 text-lg font-medium text-gray-900">API Endpoints</h3>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <code className="text-gray-600">/api/ping</code>
-                  <span className="text-green-600">✓</span>
-                </div>
-                <div className="flex justify-between">
-                  <code className="text-gray-600">/api/register-tag</code>
-                  <span className="text-green-600">✓</span>
-                </div>
-                <div className="flex justify-between">
-                  <code className="text-gray-600">/api/track/[id]</code>
-                  <span className="text-green-600">✓</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Usage Instructions */}
-        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="text-lg font-medium text-blue-900 mb-3">Using the Admin Panel</h3>
-          <div className="text-sm text-blue-800 space-y-2">
-            <p><strong>GPS Ping Simulator:</strong> Generate realistic GPS tracking data for testing. Select a route type and tag ID, then start the simulation to see pings being sent to the API.</p>
-            <p><strong>System Status:</strong> Monitor the health of various system components and services.</p>
-            <p><strong>Quick Actions:</strong> Shortcuts to common development tasks like registering test tags and viewing data.</p>
-            <p><strong>Dev Tools:</strong> Information about the current build and development environment.</p>
+            )}
           </div>
         </div>
       </div>
