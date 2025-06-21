@@ -34,6 +34,7 @@ import AdBanner from '@/components/ads/AdBanner'
 import InteractiveMap from '@/components/InteractiveMap'
 import DeviceTypeSelector from '@/components/DeviceTypeSelector'
 import LocationSharingControl from '@/components/LocationSharingControl'
+import AuthDebugger from '@/components/AuthDebugger'
 
 interface Device {
   id: string
@@ -519,6 +520,11 @@ export default function Dashboard() {
 
         {/* Location Sharing Control */}
         <LocationSharingControl devices={devices} onDeviceUpdate={fetchDevices} />
+
+        {/* Auth Debugger - Temporary for debugging */}
+        <div className="mb-6">
+          <AuthDebugger />
+        </div>
 
         {/* Filters and Search */}
         <div className="bg-white rounded-lg shadow mb-6">
