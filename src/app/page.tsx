@@ -371,7 +371,7 @@ export default function Home() {
               </div>
               <div className="text-center mb-8">
                 <h3 className="text-xl font-semibold mb-2">Pro</h3>
-                <div className="text-4xl font-bold text-gray-900 mb-2">$9</div>
+                <div className="text-4xl font-bold text-gray-900 mb-2">$4.99</div>
                 <div className="text-gray-600">per month</div>
               </div>
               <ul className="space-y-3 mb-8">
@@ -408,7 +408,7 @@ export default function Home() {
             <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
               <div className="text-center mb-8">
                 <h3 className="text-xl font-semibold mb-2">Enterprise</h3>
-                <div className="text-4xl font-bold text-gray-900 mb-2">$29</div>
+                <div className="text-4xl font-bold text-gray-900 mb-2">$14.99</div>
                 <div className="text-gray-600">per month</div>
               </div>
               <ul className="space-y-3 mb-8">
