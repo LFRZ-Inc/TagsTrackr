@@ -251,7 +251,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Update alert based on action
-    let updateData: any = {}
+    const updateData: any = {}
     
     switch (action) {
       case 'view':

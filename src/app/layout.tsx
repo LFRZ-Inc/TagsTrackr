@@ -6,6 +6,7 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://tagstrackr.vercel.app'),
   title: 'TagsTrackr - Smart Luggage Tracking',
   description: 'Never lose your luggage again. Track your bags in real-time with TagsTrackr smart GPS tags.',
   keywords: 'luggage tracking, GPS tags, travel, baggage, smart luggage',
