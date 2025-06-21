@@ -9,6 +9,564 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      ad_credits: {
+        Row: {
+          created_at: string | null
+          credit_balance: number | null
+          daily_views_count: number | null
+          last_redeemed: string | null
+          last_view_date: string | null
+          total_earned: number | null
+          total_redeemed: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          credit_balance?: number | null
+          daily_views_count?: number | null
+          last_redeemed?: string | null
+          last_view_date?: string | null
+          total_earned?: number | null
+          total_redeemed?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          credit_balance?: number | null
+          daily_views_count?: number | null
+          last_redeemed?: string | null
+          last_view_date?: string | null
+          total_earned?: number | null
+          total_redeemed?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_credits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ad_redemptions: {
+        Row: {
+          amount: number
+          created_at: string | null
+          credit_amount: number
+          description: string | null
+          id: string
+          metadata: Json | null
+          processed_at: string | null
+          redemption_type: string
+          status: string | null
+          user_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          credit_amount: number
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          processed_at?: string | null
+          redemption_type: string
+          status?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          credit_amount?: number
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          processed_at?: string | null
+          redemption_type?: string
+          status?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_redemptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ad_views: {
+        Row: {
+          ad_id: string | null
+          id: string
+          ip_address: unknown | null
+          is_click: boolean | null
+          page_context: string
+          session_id: string | null
+          user_agent: string | null
+          user_id: string | null
+          viewed_at: string | null
+        }
+        Insert: {
+          ad_id?: string | null
+          id?: string
+          ip_address?: unknown | null
+          is_click?: boolean | null
+          page_context: string
+          session_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          viewed_at?: string | null
+        }
+        Update: {
+          ad_id?: string | null
+          id?: string
+          ip_address?: unknown | null
+          is_click?: boolean | null
+          page_context?: string
+          session_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          viewed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_views_ad_id_fkey"
+            columns: ["ad_id"]
+            isOneToOne: false
+            referencedRelation: "ads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_views_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ads: {
+        Row: {
+          body: string
+          click_count: number | null
+          created_at: string | null
+          current_daily_views: number | null
+          end_date: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          link_url: string
+          max_daily_views: number | null
+          metadata: Json | null
+          page_context: string
+          priority: number | null
+          start_date: string | null
+          title: string
+          total_views: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          body: string
+          click_count?: number | null
+          created_at?: string | null
+          current_daily_views?: number | null
+          end_date?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          link_url: string
+          max_daily_views?: number | null
+          metadata?: Json | null
+          page_context: string
+          priority?: number | null
+          start_date?: string | null
+          title: string
+          total_views?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          body?: string
+          click_count?: number | null
+          created_at?: string | null
+          current_daily_views?: number | null
+          end_date?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          link_url?: string
+          max_daily_views?: number | null
+          metadata?: Json | null
+          page_context?: string
+          priority?: number | null
+          start_date?: string | null
+          title?: string
+          total_views?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      alerts: {
+        Row: {
+          alert_type: string
+          id: string
+          is_active: boolean | null
+          metadata: Json | null
+          resolved_at: string | null
+          tag_id: string | null
+          triggered_at: string | null
+          user_id: string | null
+          viewed_at: string | null
+        }
+        Insert: {
+          alert_type: string
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          resolved_at?: string | null
+          tag_id?: string | null
+          triggered_at?: string | null
+          user_id?: string | null
+          viewed_at?: string | null
+        }
+        Update: {
+          alert_type?: string
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          resolved_at?: string | null
+          tag_id?: string | null
+          triggered_at?: string | null
+          user_id?: string | null
+          viewed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alerts_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      devices: {
+        Row: {
+          adhesive: boolean | null
+          battery_level: number | null
+          created_at: string | null
+          data_remaining_mb: number | null
+          firmware_version: string | null
+          id: string
+          is_active: boolean | null
+          is_rented: boolean | null
+          last_ping_at: string | null
+          owner_id: string | null
+          registered_at: string | null
+          tag_id: string
+          type: string
+          updated_at: string | null
+        }
+        Insert: {
+          adhesive?: boolean | null
+          battery_level?: number | null
+          created_at?: string | null
+          data_remaining_mb?: number | null
+          firmware_version?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_rented?: boolean | null
+          last_ping_at?: string | null
+          owner_id?: string | null
+          registered_at?: string | null
+          tag_id: string
+          type: string
+          updated_at?: string | null
+        }
+        Update: {
+          adhesive?: boolean | null
+          battery_level?: number | null
+          created_at?: string | null
+          data_remaining_mb?: number | null
+          firmware_version?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_rented?: boolean | null
+          last_ping_at?: string | null
+          owner_id?: string | null
+          registered_at?: string | null
+          tag_id?: string
+          type?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      found_reports: {
+        Row: {
+          finder_contact: string
+          finder_name: string | null
+          found_at: string | null
+          found_location_lat: number | null
+          found_location_lng: number | null
+          id: string
+          notes: string | null
+          owner_notified: boolean | null
+          reward_amount: number | null
+          reward_claimed: boolean | null
+          status: string | null
+          tag_id: string | null
+        }
+        Insert: {
+          finder_contact: string
+          finder_name?: string | null
+          found_at?: string | null
+          found_location_lat?: number | null
+          found_location_lng?: number | null
+          id?: string
+          notes?: string | null
+          owner_notified?: boolean | null
+          reward_amount?: number | null
+          reward_claimed?: boolean | null
+          status?: string | null
+          tag_id?: string | null
+        }
+        Update: {
+          finder_contact?: string
+          finder_name?: string | null
+          found_at?: string | null
+          found_location_lat?: number | null
+          found_location_lng?: number | null
+          id?: string
+          notes?: string | null
+          owner_notified?: boolean | null
+          reward_amount?: number | null
+          reward_claimed?: boolean | null
+          status?: string | null
+          tag_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "found_reports_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rental_history: {
+        Row: {
+          condition_notes: string | null
+          device_id: string | null
+          id: string
+          refund_amount: number | null
+          refund_processed: boolean | null
+          rented_at: string | null
+          return_approved: boolean | null
+          returned_at: string | null
+          shipping_address: Json | null
+          tracking_number: string | null
+          user_id: string | null
+        }
+        Insert: {
+          condition_notes?: string | null
+          device_id?: string | null
+          id?: string
+          refund_amount?: number | null
+          refund_processed?: boolean | null
+          rented_at?: string | null
+          return_approved?: boolean | null
+          returned_at?: string | null
+          shipping_address?: Json | null
+          tracking_number?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          condition_notes?: string | null
+          device_id?: string | null
+          id?: string
+          refund_amount?: number | null
+          refund_processed?: boolean | null
+          rented_at?: string | null
+          return_approved?: boolean | null
+          returned_at?: string | null
+          shipping_address?: Json | null
+          tracking_number?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_history_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscriptions: {
+        Row: {
+          canceled_at: string | null
+          created_at: string | null
+          devices_covered: number
+          id: string
+          is_active: boolean | null
+          plan_type: string
+          price_monthly: number
+          renewal_date: string
+          stripe_subscription_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          canceled_at?: string | null
+          created_at?: string | null
+          devices_covered?: number
+          id?: string
+          is_active?: boolean | null
+          plan_type: string
+          price_monthly?: number
+          renewal_date: string
+          stripe_subscription_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          canceled_at?: string | null
+          created_at?: string | null
+          devices_covered?: number
+          id?: string
+          is_active?: boolean | null
+          plan_type?: string
+          price_monthly?: number
+          renewal_date?: string
+          stripe_subscription_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      subscription_devices: {
+        Row: {
+          allocated_at: string | null
+          device_id: string | null
+          id: string
+          subscription_id: string | null
+        }
+        Insert: {
+          allocated_at?: string | null
+          device_id?: string | null
+          id?: string
+          subscription_id?: string | null
+        }
+        Update: {
+          allocated_at?: string | null
+          device_id?: string | null
+          id?: string
+          subscription_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_devices_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_devices_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tag_shares: {
+        Row: {
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          owner_id: string | null
+          permissions: string
+          shared_at: string | null
+          shared_with_user_id: string | null
+          tag_id: string | null
+        }
+        Insert: {
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          owner_id?: string | null
+          permissions: string
+          shared_at?: string | null
+          shared_with_user_id?: string | null
+          tag_id?: string | null
+        }
+        Update: {
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          owner_id?: string | null
+          permissions?: string
+          shared_at?: string | null
+          shared_with_user_id?: string | null
+          tag_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tag_shares_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          created_at: string | null
+          current_devices: number | null
+          device_limit: number | null
+          email: string
+          full_name: string | null
+          id: string
+          is_premium: boolean | null
+          owned_tags: number | null
+          phone: string | null
+          role: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_devices?: number | null
+          device_limit?: number | null
+          email: string
+          full_name?: string | null
+          id: string
+          is_premium?: boolean | null
+          owned_tags?: number | null
+          phone?: string | null
+          role?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_devices?: number | null
+          device_limit?: number | null
+          email?: string
+          full_name?: string | null
+          id?: string
+          is_premium?: boolean | null
+          owned_tags?: number | null
+          phone?: string | null
+          role?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       geofence_alerts: {
         Row: {
           acknowledged_at: string | null
@@ -493,36 +1051,6 @@ export type Database = {
           },
         ]
       }
-      users: {
-        Row: {
-          created_at: string | null
-          email: string
-          full_name: string | null
-          id: string
-          phone: string | null
-          role: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          email: string
-          full_name?: string | null
-          id: string
-          phone?: string | null
-          role?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          email?: string
-          full_name?: string | null
-          id?: string
-          phone?: string | null
-          role?: string | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
     }
     Views: {
       active_tags_with_location: {
@@ -617,6 +1145,19 @@ export type Database = {
       }
     }
     Functions: {
+      calculate_subscription_cost: {
+        Args: { p_devices_covered?: number }
+        Returns: number
+      }
+      register_device: {
+        Args: {
+          p_tag_id: string
+          p_type: string
+          p_adhesive?: boolean
+          p_owner_id?: string
+        }
+        Returns: string
+      }
       is_admin: {
         Args: { user_id: string }
         Returns: boolean
