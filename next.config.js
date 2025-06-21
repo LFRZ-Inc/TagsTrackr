@@ -10,9 +10,7 @@ const nextConfig = {
   // }
   
   // For Vercel deployment (current configuration)
-  experimental: {
-    serverActions: true,
-  },
+  // Note: Server Actions are enabled by default in Next.js 14
 }
 
 module.exports = nextConfig 

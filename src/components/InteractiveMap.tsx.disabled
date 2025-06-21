@@ -7,7 +7,7 @@ import { MapPin, Battery, Signal, Clock } from 'lucide-react'
 // Dynamic import to avoid SSR issues with Leaflet
 const MapContainer = dynamic(
   () => import('react-leaflet').then((mod) => mod.MapContainer),
-  { ssr: false }
+  { ssr: false, loading: () => <div>Loading map...</div> }
 )
 const TileLayer = dynamic(
   () => import('react-leaflet').then((mod) => mod.TileLayer),
