@@ -25,7 +25,10 @@ import {
   Watch,
   Laptop,
   Grid3X3,
-  List
+  List,
+  Bell,
+  Shield,
+  Users
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAppStore } from '@/lib/store'
@@ -36,11 +39,15 @@ import DeviceTypeSelector from '@/components/DeviceTypeSelector'
 import LocationSharingControl from '@/components/LocationSharingControl'
 import FamilySharing from '@/components/FamilySharing'
 import AuthDebugger from '@/components/AuthDebugger'
+import PrivacySettings from '@/components/PrivacySettings'
+import AlertsManager from '@/components/AlertsManager'
+import MovementAnalytics from '@/components/MovementAnalytics'
 
 interface Device {
   id: string
   tag_id: string
   name?: string
+  device_name: string
   type: string
   device_type: string
   device_model?: string
@@ -53,6 +60,7 @@ interface Device {
   group_name: string | null
   sharing_enabled?: boolean
   location_sharing_active?: boolean
+  is_current_device?: boolean
   current_location?: {
     latitude: number
     longitude: number
@@ -101,6 +109,7 @@ export default function Dashboard() {
   const [realTimeEnabled, setRealTimeEnabled] = useState(true)
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null)
   const [activeTab, setActiveTab] = useState<'devices' | 'sharing' | 'analytics'>('devices')
+  const [activeAdvancedTab, setActiveAdvancedTab] = useState<'alerts' | 'analytics' | 'family' | 'privacy'>('alerts')
 
   const router = useRouter()
 
@@ -263,6 +272,7 @@ export default function Dashboard() {
         id: tag.id,
         tag_id: tag.tag_id,
         name: tag.tag_id,
+        device_name: tag.tag_id,
         type: 'standard',
         device_type: 'gps_tag',
         device_model: undefined,
@@ -275,6 +285,7 @@ export default function Dashboard() {
         group_name: null,
         sharing_enabled: false,
         location_sharing_active: false,
+        is_current_device: false,
         current_location: tag.latest_location?.[0] ? {
           latitude: tag.latest_location[0].latitude,
           longitude: tag.latest_location[0].longitude
@@ -286,6 +297,7 @@ export default function Dashboard() {
         id: device.id,
         tag_id: device.device_name || `${device.device_type}-${device.id.slice(0, 8)}`,
         name: device.device_name,
+        device_name: device.device_name || `${device.device_type}-${device.id.slice(0, 8)}`,
         type: 'standard',
         device_type: device.device_type,
         device_model: device.device_model || undefined,
@@ -298,6 +310,7 @@ export default function Dashboard() {
         group_name: null,
         sharing_enabled: device.sharing_enabled || false,
         location_sharing_active: device.location_sharing_active || false,
+        is_current_device: device.is_current_device || false,
         current_location: device.latest_location?.[0] ? {
           latitude: device.latest_location[0].latitude,
           longitude: device.latest_location[0].longitude
@@ -708,139 +721,213 @@ export default function Dashboard() {
         {activeTab === 'devices' && (
           <>
             {/* Main Content */}
-        {viewMode === 'map' ? (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="h-96">
-              <InteractiveMap
-                tags={filteredDevices}
-                selectedTag={selectedDevice}
-                height="100%"
-                onTagClick={setSelectedDevice}
-                showRoute={true}
-                autoCenter={true}
-                realTimeUpdates={realTimeEnabled}
-              />
-            </div>
-          </div>
-        ) : (
-          /* Device List/Grid */
-          filteredDevices.length === 0 ? (
-            <div className="bg-white rounded-lg shadow p-12 text-center">
-              <MapPin className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-medium text-gray-900 mb-2">
-                {devices.length === 0 ? 'No devices registered yet' : 'No devices match your filters'}
-              </h3>
-              <p className="text-gray-600 mb-6">
-                {devices.length === 0 
-                  ? 'Get started by adding your first GPS tag or personal device.' 
-                  : 'Try adjusting your search or filter criteria.'
-                }
-              </p>
-              {devices.length === 0 && (
-                <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <Link
-                    href="/register-tag"
-                    className="inline-flex items-center px-6 py-3 bg-primary-600 text-white rounded-md hover:bg-primary-700"
-                  >
-                    <Plus className="h-5 w-5 mr-2" />
-                    Add GPS Tag
-                  </Link>
-                  <DeviceTypeSelector onDeviceAdded={fetchDevices} className="bg-blue-600 hover:bg-blue-700" />
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className={`grid gap-4 ${
-              viewMode === 'grid' 
-                ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' 
-                : 'grid-cols-1'
-            }`}>
-              {filteredDevices.map((device) => {
-                const DeviceIcon = deviceTypeIcons[device.device_type as keyof typeof deviceTypeIcons] || MapPin;
-                return (
-                  <div key={device.id} className="bg-white rounded-lg shadow hover:shadow-md transition-shadow">
-                    <div className="p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-1">
-                            <DeviceIcon className="h-5 w-5 text-gray-600" />
-                            <h3 className="text-lg font-medium text-gray-900 truncate">{device.name || device.tag_id}</h3>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              device.is_active 
-                                ? 'bg-green-100 text-green-800' 
-                                : 'bg-red-100 text-red-800'
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+              {/* Left Column - Device Management */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Device Registration */}
+                <div className="bg-white rounded-lg shadow p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Device Management</h3>
+                    <DeviceTypeSelector onDeviceAdded={fetchDevices} />
+                  </div>
+                  
+                  {devices.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Smartphone className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-500 mb-2">No devices registered yet</p>
+                      <p className="text-sm text-gray-400">Add your first device to start tracking</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {devices.map((device) => (
+                        <div key={device.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                          <div className="flex items-center space-x-3">
+                            <div className={`p-2 rounded-full ${
+                              device.device_type === 'phone' ? 'bg-green-100' :
+                              device.device_type === 'tablet' ? 'bg-purple-100' :
+                              device.device_type === 'watch' ? 'bg-orange-100' :
+                              device.device_type === 'laptop' ? 'bg-gray-100' :
+                              'bg-blue-100'
                             }`}>
-                              {device.is_active ? 'Active' : 'Offline'}
+                              {device.device_type === 'phone' && <Smartphone className="h-5 w-5 text-green-600" />}
+                              {device.device_type === 'tablet' && <Tablet className="h-5 w-5 text-purple-600" />}
+                              {device.device_type === 'watch' && <Watch className="h-5 w-5 text-orange-600" />}
+                              {device.device_type === 'laptop' && <Laptop className="h-5 w-5 text-gray-600" />}
+                              {!['phone', 'tablet', 'watch', 'laptop'].includes(device.device_type) && 
+                                <MapPin className="h-5 w-5 text-blue-600" />}
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">{device.device_name}</p>
+                              <p className="text-sm text-gray-600">
+                                {device.device_type} • {device.is_current_device ? 'Current device' : 'Registered'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              device.location_sharing_active 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {device.location_sharing_active ? 'Sharing' : 'Offline'}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-600 truncate">
-                            {getDeviceTypeDisplayName(device.device_type)}
-                            {device.device_model && ` • ${device.device_model}`}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">ID: {device.tag_id}</p>
-                          {device.group_name && (
-                            <div className="flex items-center mt-1">
-                              <Folder className="h-3 w-3 text-gray-400 mr-1" />
-                              <span className="text-xs text-gray-500">{device.group_name}</span>
-                            </div>
-                          )}
                         </div>
-                        <div className="flex flex-col items-end space-y-1">
-                          {device.battery_level !== null && (
-                            <div className="flex items-center text-sm">
-                              <Battery className={`h-4 w-4 mr-1 ${getBatteryColor(device.battery_level)}`} />
-                              <span className={getBatteryColor(device.battery_level)}>
-                                {device.battery_level}%
-                              </span>
-                            </div>
-                          )}
-                          {device.current_location && (
-                            <div className="flex items-center text-xs text-gray-500">
-                              <MapPin className="h-3 w-3 mr-1" />
-                              Location: Yes
-                            </div>
-                          )}
-                          {device.location_sharing_active && (
-                            <div className="flex items-center text-xs text-green-600">
-                              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></div>
-                              Sharing
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-                      <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
-                        <div className="flex items-center">
-                          <Clock className="h-4 w-4 mr-1" />
-                          {device.last_seen_at ? formatTimestamp(device.last_seen_at) : 'Never seen'}
-                        </div>
-                      </div>
+                                 {/* Interactive Map */}
+                 <InteractiveMap tags={devices} />
 
-                      <div className="flex space-x-2">
-                        <Link
-                          href={`/track/${device.tag_id}`}
-                          className="flex-1 flex items-center justify-center px-3 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 text-sm"
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          Track
-                        </Link>
+                {/* Advanced Features Tabs */}
+                <div className="bg-white rounded-lg shadow">
+                  <div className="border-b border-gray-200">
+                    <nav className="flex space-x-8 px-6">
+                      {[
+                        { id: 'alerts', label: 'Alerts & Safety', icon: Bell },
+                        { id: 'analytics', label: 'Movement Analytics', icon: BarChart3 },
+                        { id: 'family', label: 'Family Sharing', icon: Users },
+                        { id: 'privacy', label: 'Privacy Settings', icon: Shield }
+                      ].map((tab) => (
                         <button
-                          onClick={() => {
-                            setGroupingDevice(device.id)
-                            setShowGroupModal(true)
-                          }}
-                          className="px-3 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 text-sm"
+                          key={tab.id}
+                          onClick={() => setActiveAdvancedTab(tab.id as any)}
+                          className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center ${
+                            activeAdvancedTab === tab.id
+                              ? 'border-blue-500 text-blue-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          }`}
                         >
-                          <Folder className="h-4 w-4" />
+                          <tab.icon className="h-4 w-4 mr-2" />
+                          {tab.label}
                         </button>
+                      ))}
+                    </nav>
+                  </div>
+
+                  <div className="p-6">
+                    {activeAdvancedTab === 'alerts' && <AlertsManager />}
+                    {activeAdvancedTab === 'analytics' && <MovementAnalytics />}
+                    {activeAdvancedTab === 'family' && <FamilySharing devices={devices} onRefresh={fetchDevices} />}
+                    {activeAdvancedTab === 'privacy' && <PrivacySettings />}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column - Device Details */}
+              <div className="lg:col-span-1 space-y-6">
+                {/* Device Details */}
+                <div className="bg-white rounded-lg shadow p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Device Details</h3>
+                    <DeviceTypeSelector onDeviceAdded={fetchDevices} />
+                  </div>
+                  
+                  {selectedDevice && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <div className={`p-2 rounded-full ${
+                            selectedDevice.device_type === 'phone' ? 'bg-green-100' :
+                            selectedDevice.device_type === 'tablet' ? 'bg-purple-100' :
+                            selectedDevice.device_type === 'watch' ? 'bg-orange-100' :
+                            selectedDevice.device_type === 'laptop' ? 'bg-gray-100' :
+                            'bg-blue-100'
+                          }`}>
+                            {selectedDevice.device_type === 'phone' && <Smartphone className="h-5 w-5 text-green-600" />}
+                            {selectedDevice.device_type === 'tablet' && <Tablet className="h-5 w-5 text-purple-600" />}
+                            {selectedDevice.device_type === 'watch' && <Watch className="h-5 w-5 text-orange-600" />}
+                            {selectedDevice.device_type === 'laptop' && <Laptop className="h-5 w-5 text-gray-600" />}
+                            {!['phone', 'tablet', 'watch', 'laptop'].includes(selectedDevice.device_type) && 
+                              <MapPin className="h-5 w-5 text-blue-600" />}
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">{selectedDevice.device_name}</p>
+                            <p className="text-sm text-gray-600">
+                              {selectedDevice.device_type} • {selectedDevice.is_current_device ? 'Current device' : 'Registered'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            selectedDevice.location_sharing_active 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {selectedDevice.location_sharing_active ? 'Sharing' : 'Offline'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <div className="p-2 rounded-full bg-gray-100">
+                            <Battery className="h-5 w-5 text-gray-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">Battery Level</p>
+                            <p className="text-sm text-gray-600">
+                              {selectedDevice.battery_level ? `${selectedDevice.battery_level}%` : 'Unknown'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            selectedDevice.battery_level && selectedDevice.battery_level > 50 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {selectedDevice.battery_level && selectedDevice.battery_level > 50 ? 'Charging' : 'Needs Charging'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <div className="p-2 rounded-full bg-gray-100">
+                            <Clock className="h-5 w-5 text-gray-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">Last Seen</p>
+                            <p className="text-sm text-gray-600">
+                              {selectedDevice.last_seen_at ? formatTimestamp(selectedDevice.last_seen_at) : 'Never seen'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            selectedDevice.last_seen_at ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {selectedDevice.last_seen_at ? 'Seen' : 'Never seen'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <div className="p-2 rounded-full bg-gray-100">
+                            <MapPin className="h-5 w-5 text-gray-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">Location</p>
+                            <p className="text-sm text-gray-600">
+                              {selectedDevice.current_location ? 'Yes' : 'No'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            selectedDevice.current_location ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {selectedDevice.current_location ? 'Located' : 'Not located'}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  )}
+                </div>
+              </div>
             </div>
-          )
-        )}
           </>
         )}
 
