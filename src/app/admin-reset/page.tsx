@@ -6,6 +6,7 @@ import { MapPin } from 'lucide-react'
 export default function AdminResetPage() {
   const [loading, setLoading] = useState(false)
   const [confirmLoading, setConfirmLoading] = useState(false)
+  const [rebuildLoading, setRebuildLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -75,6 +76,38 @@ export default function AdminResetPage() {
     }
   }
 
+  const handleRebuildSupabase = async () => {
+    setRebuildLoading(true)
+    setError('')
+    setMessage('')
+
+    try {
+      const response = await fetch('/api/admin/rebuild-supabase', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          adminKey: 'tagstrackr-admin-reset-2024'
+        }),
+      })
+
+      const result = await response.json()
+      
+      if (!response.ok) {
+        setError(result.error || 'Rebuild failed')
+        return
+      }
+
+      setMessage('🎉 Supabase completely rebuilt! Fresh database with proper schema and RLS policies.')
+      
+    } catch (err) {
+      setError('Failed to rebuild Supabase')
+    } finally {
+      setRebuildLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -87,7 +120,7 @@ export default function AdminResetPage() {
             Admin Reset
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Clean up user data for fresh signup
+            Complete Supabase rebuild and user management
           </p>
         </div>
 
@@ -106,9 +139,24 @@ export default function AdminResetPage() {
 
           <div className="space-y-4">
             <div className="text-sm text-gray-600">
-              <p><strong>Email:</strong> luisdrod750@gmail.com</p>
-              <p><strong>Action:</strong> Delete all user data and allow fresh signup</p>
+              <p><strong>Admin Email:</strong> luisdrod750@gmail.com</p>
+              <p><strong>Options:</strong> Complete rebuild, reset user data, or confirm existing user</p>
             </div>
+
+            <button
+              onClick={handleRebuildSupabase}
+              disabled={rebuildLoading}
+              className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {rebuildLoading ? (
+                <div className="flex items-center">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Rebuilding...
+                </div>
+              ) : (
+                '🚀 Complete Supabase Rebuild'
+              )}
+            </button>
 
             <button
               onClick={handleReset}
@@ -121,7 +169,7 @@ export default function AdminResetPage() {
                   Resetting...
                 </div>
               ) : (
-                'Reset User Data'
+                'Reset User Data Only'
               )}
             </button>
 
@@ -146,7 +194,7 @@ export default function AdminResetPage() {
                   href={message.includes('confirmed') ? "/login" : "/signup"}
                   className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
                 >
-                  {message.includes('confirmed') ? "Go to Login" : "Go to Signup"}
+                  {message.includes('confirmed') ? "Go to Login" : message.includes('rebuilt') ? "Go to Signup (Fresh Start)" : "Go to Signup"}
                 </a>
               </div>
             )}
