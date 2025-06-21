@@ -1,0 +1,58 @@
+{
+  "name": "TagsTrackr - GPS Device Tracking",
+  "short_name": "TagsTrackr",
+  "description": "Track your GPS tags and personal devices with real-time location sharing",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "utilities", "navigation"],
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add Device",
+      "short_name": "Add Device",
+      "description": "Register a new device for tracking",
+      "url": "/dashboard?action=add-device",
+      "icons": [
+        {
+          "src": "/icon-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "View Map",
+      "short_name": "Map",
+      "description": "View device locations on map",
+      "url": "/dashboard?view=map",
+      "icons": [
+        {
+          "src": "/icon-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    "geolocation",
+    "notifications",
+    "background-sync",
+    "periodic-background-sync"
+  ],
+  "prefer_related_applications": false
+} 

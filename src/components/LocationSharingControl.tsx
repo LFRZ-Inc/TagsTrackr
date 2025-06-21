@@ -30,7 +30,7 @@ interface Device {
   group_name: string | null;
   sharing_enabled?: boolean;
   location_sharing_active?: boolean;
-  browser_fingerprint?: string;
+  hardware_fingerprint?: string;
   is_current_device?: boolean;
   current_location?: {
     latitude: number;
@@ -43,28 +43,36 @@ interface LocationSharingControlProps {
   onDeviceUpdate: () => void;
 }
 
-// Generate the same browser fingerprint as in DeviceTypeSelector
-const generateBrowserFingerprint = (): string => {
+// Generate the same hardware fingerprint as in DeviceTypeSelector
+const generateHardwareFingerprint = (): string => {
   if (typeof window === 'undefined') return 'unknown';
   
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  ctx!.textBaseline = 'top';
-  ctx!.font = '14px Arial';
-  ctx!.fillText('Browser fingerprint', 2, 2);
-  
-  const fingerprint = [
-    navigator.userAgent,
+  // Use hardware/system identifiers that are consistent across browsers
+  const hardwareIdentifiers = [
+    // Screen resolution (consistent across browsers)
+    `${screen.width}x${screen.height}`,
+    `${screen.availWidth}x${screen.availHeight}`,
+    
+    // Hardware concurrency (CPU cores)
+    navigator.hardwareConcurrency || 'unknown',
+    
+    // Platform (OS)
+    navigator.platform,
+    
+    // Timezone (consistent on same machine)
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+    
+    // Language (usually consistent)
     navigator.language,
-    screen.width + 'x' + screen.height,
-    new Date().getTimezoneOffset(),
-    canvas.toDataURL()
+    
+    // Memory (if available)
+    (navigator as any).deviceMemory || 'unknown'
   ].join('|');
   
   // Simple hash function
   let hash = 0;
-  for (let i = 0; i < fingerprint.length; i++) {
-    const char = fingerprint.charCodeAt(i);
+  for (let i = 0; i < hardwareIdentifiers.length; i++) {
+    const char = hardwareIdentifiers.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
     hash = hash & hash; // Convert to 32-bit integer
   }
@@ -108,16 +116,16 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
         }
       }
 
-      // Try browser fingerprint
-      const browserFingerprint = generateBrowserFingerprint();
-      const device = devices.find(d => d.browser_fingerprint === browserFingerprint);
+      // Try hardware fingerprint
+      const hardwareFingerprint = generateHardwareFingerprint();
+      const device = devices.find(d => d.hardware_fingerprint === hardwareFingerprint);
       
       if (device) {
         setCurrentDevice(device);
         setIsSharing(device.location_sharing_active || false);
         // Store in localStorage for faster lookup next time
         localStorage.setItem('tagstrackr_current_device_id', device.id);
-        localStorage.setItem('tagstrackr_device_fingerprint', browserFingerprint);
+        localStorage.setItem('tagstrackr_device_hardware_fingerprint', hardwareFingerprint);
       } else if (devices.length > 0) {
         // If no exact match, check if there's only one device of the same type
         const browserDeviceType = detectDeviceType();
@@ -475,14 +483,36 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
 
       {/* Instructions */}
       {!isSharing && locationSupported && (
-        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-          <h4 className="font-medium text-blue-900 mb-2">📍 How Location Sharing Works</h4>
-          <ul className="text-sm text-blue-800 space-y-1">
-            <li>• Toggle the switch above to start sharing your location</li>
-            <li>• Your browser will ask for location permission</li>
-            <li>• Location updates will be sent automatically while enabled</li>
-            <li>• You can turn off sharing anytime</li>
-          </ul>
+        <div className="mt-4 space-y-3">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+            <h4 className="font-medium text-blue-900 mb-2">📍 How Location Sharing Works</h4>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• Toggle the switch above to start sharing your location</li>
+              <li>• Your browser will ask for location permission</li>
+              <li>• Location updates will be sent automatically while enabled</li>
+              <li>• You can turn off sharing anytime</li>
+            </ul>
+          </div>
+          
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+            <h4 className="font-medium text-amber-900 mb-2">⚠️ Background Tracking Limitations</h4>
+            <ul className="text-sm text-amber-800 space-y-1">
+              <li>• <strong>Browser Tab Required:</strong> Keep this browser tab open for continuous tracking</li>
+              <li>• <strong>Limited Background:</strong> Web browsers restrict background location access</li>
+              <li>• <strong>Battery Optimization:</strong> Your device may pause tracking to save battery</li>
+              <li>• <strong>For True Background Tracking:</strong> Consider our upcoming mobile app</li>
+            </ul>
+          </div>
+          
+          <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+            <h4 className="font-medium text-green-900 mb-2">💡 Tips for Better Tracking</h4>
+            <ul className="text-sm text-green-800 space-y-1">
+              <li>• Pin this tab in your browser to prevent accidental closing</li>
+              <li>• Add TagsTrackr to your home screen (mobile) for app-like experience</li>
+              <li>• Enable notifications to get reminded to check in</li>
+              <li>• Use multiple devices for better family/item coverage</li>
+            </ul>
+          </div>
         </div>
       )}
     </div>

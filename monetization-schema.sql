@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS public.devices (
     device_type VARCHAR(20) CHECK (device_type IN ('gps_tag', 'phone', 'tablet', 'watch', 'laptop')),
     device_model VARCHAR(100), -- e.g., "iPhone 15 Pro", "Galaxy S24"
     device_os VARCHAR(50), -- e.g., "iOS 17", "Android 14", "Windows 11"
-    browser_fingerprint VARCHAR(100), -- For associating browser sessions with devices
+    hardware_fingerprint VARCHAR(100), -- For associating hardware with devices across browsers
     is_current_device BOOLEAN DEFAULT false, -- Mark the device the user is currently on
     location_sharing_enabled BOOLEAN DEFAULT false,
     location_sharing_active BOOLEAN DEFAULT false,
@@ -199,7 +199,7 @@ CREATE INDEX IF NOT EXISTS idx_devices_tag_id ON public.devices(tag_id);
 CREATE INDEX IF NOT EXISTS idx_devices_type ON public.devices(type);
 CREATE INDEX IF NOT EXISTS idx_devices_is_active ON public.devices(is_active);
 CREATE INDEX IF NOT EXISTS idx_devices_device_type ON public.devices(device_type);
-CREATE INDEX IF NOT EXISTS idx_devices_browser_fingerprint ON public.devices(browser_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_devices_hardware_fingerprint ON public.devices(hardware_fingerprint);
 CREATE INDEX IF NOT EXISTS idx_devices_location_sharing ON public.devices(location_sharing_enabled);
 CREATE INDEX IF NOT EXISTS idx_devices_is_current ON public.devices(is_current_device);
 

@@ -69,7 +69,44 @@ const detectDeviceType = (): string => {
   return 'laptop';
 };
 
-// Generate a browser fingerprint for device identification
+// Generate a hardware-based fingerprint that's consistent across browsers on the same machine
+const generateHardwareFingerprint = (): string => {
+  if (typeof window === 'undefined') return 'unknown';
+  
+  // Use hardware/system identifiers that are consistent across browsers
+  const hardwareIdentifiers = [
+    // Screen resolution (consistent across browsers)
+    `${screen.width}x${screen.height}`,
+    `${screen.availWidth}x${screen.availHeight}`,
+    
+    // Hardware concurrency (CPU cores)
+    navigator.hardwareConcurrency || 'unknown',
+    
+    // Platform (OS)
+    navigator.platform,
+    
+    // Timezone (consistent on same machine)
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+    
+    // Language (usually consistent)
+    navigator.language,
+    
+    // Memory (if available)
+    (navigator as any).deviceMemory || 'unknown'
+  ].join('|');
+  
+  // Simple hash function
+  let hash = 0;
+  for (let i = 0; i < hardwareIdentifiers.length; i++) {
+    const char = hardwareIdentifiers.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  
+  return Math.abs(hash).toString(36);
+};
+
+// Generate a browser-specific fingerprint for secondary identification
 const generateBrowserFingerprint = (): string => {
   if (typeof window === 'undefined') return 'unknown';
   
@@ -79,18 +116,18 @@ const generateBrowserFingerprint = (): string => {
   ctx!.font = '14px Arial';
   ctx!.fillText('Browser fingerprint', 2, 2);
   
-  const fingerprint = [
+  const browserIdentifiers = [
     navigator.userAgent,
-    navigator.language,
-    screen.width + 'x' + screen.height,
-    new Date().getTimezoneOffset(),
-    canvas.toDataURL()
+    canvas.toDataURL(),
+    // Add more browser-specific identifiers
+    navigator.vendor || 'unknown',
+    navigator.cookieEnabled.toString()
   ].join('|');
   
   // Simple hash function
   let hash = 0;
-  for (let i = 0; i < fingerprint.length; i++) {
-    const char = fingerprint.charCodeAt(i);
+  for (let i = 0; i < browserIdentifiers.length; i++) {
+    const char = browserIdentifiers.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
     hash = hash & hash; // Convert to 32-bit integer
   }
@@ -184,8 +221,8 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
     setError('');
     
     try {
-      // Generate browser fingerprint for device identification
-      const browserFingerprint = generateBrowserFingerprint();
+      // Generate hardware fingerprint for device identification
+      const hardwareFingerprint = generateHardwareFingerprint();
       
       const response = await fetch('/api/device/personal', {
         method: 'POST',
@@ -196,7 +233,7 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
           device_name: deviceName.trim(),
           device_model: deviceModel.trim() || undefined,
           device_os: deviceOS.trim() || undefined,
-          browser_fingerprint: browserFingerprint,
+          hardware_fingerprint: hardwareFingerprint,
           is_current_device: true // Mark this as the current browser/device
         })
       });
@@ -206,7 +243,7 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
       if (response.ok) {
         // Store the device ID in localStorage for this browser
         localStorage.setItem('tagstrackr_current_device_id', data.device_id);
-        localStorage.setItem('tagstrackr_device_fingerprint', browserFingerprint);
+        localStorage.setItem('tagstrackr_device_hardware_fingerprint', hardwareFingerprint);
         
         // Success - close modal and reset form
         setIsOpen(false);
@@ -217,8 +254,12 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
         setError('');
         onDeviceAdded();
         
-        // Show success message
-        alert(`✅ ${deviceName} has been registered as your current device!\n\nYou can now enable location sharing from the dashboard to track this device.`);
+        // Show appropriate success message
+        if (data.existing) {
+          alert(`✅ Device Found!\n\n${data.message}\n\nYou can now enable location sharing from the dashboard.`);
+        } else {
+          alert(`✅ ${deviceName} has been registered as your current device!\n\nYou can now enable location sharing from the dashboard to track this device.`);
+        }
       } else {
         if (response.status === 401) {
           setError('Please log in to add devices');
@@ -391,12 +432,12 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
 
               {/* Current Device Notice */}
               <div className="bg-green-50 border border-green-200 rounded-md p-4">
-                <h4 className="font-medium text-green-900 mb-2">📱 Current Device Registration</h4>
+                <h4 className="font-medium text-green-900 mb-2">📱 Smart Device Registration</h4>
                 <ul className="text-sm text-green-800 space-y-1">
                   <li>• This will register the device you're currently using</li>
-                  <li>• Location sharing will work automatically from this browser</li>
-                  <li>• Your device will be identified by a secure browser fingerprint</li>
-                  <li>• You can add other devices from their respective browsers</li>
+                  <li>• Works across all browsers on this device (Chrome, Firefox, Edge, etc.)</li>
+                  <li>• Your device will be identified by a secure hardware fingerprint</li>
+                  <li>• No duplicate devices when switching browsers</li>
                 </ul>
               </div>
 

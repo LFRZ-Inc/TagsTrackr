@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       device_name, 
       device_model, 
       device_os,
-      browser_fingerprint,
+      hardware_fingerprint,
       is_current_device = false
     } = body
 
@@ -60,21 +60,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid device type' }, { status: 400 })
     }
 
-    // Check if device with this fingerprint already exists for this user
-    if (browser_fingerprint) {
+    // Check if device with this hardware fingerprint already exists for this user
+    if (hardware_fingerprint) {
       const { data: existingDevice } = await supabase
         .from('devices')
-        .select('id, tag_id')
+        .select('id, tag_id, device_type, device_model, device_os')
         .eq('owner_id', user.id)
-        .eq('browser_fingerprint', browser_fingerprint)
+        .eq('hardware_fingerprint', hardware_fingerprint)
         .single()
 
       if (existingDevice) {
         return NextResponse.json({
           success: true,
           device_id: existingDevice.id,
-          message: 'Device already registered for this browser',
-          existing: true
+          message: `This ${existingDevice.device_type} (${existingDevice.tag_id}) is already registered for this hardware`,
+          existing: true,
+          device_info: existingDevice
         })
       }
     }
@@ -92,12 +93,12 @@ export async function POST(request: NextRequest) {
       throw error
     }
 
-    // Update the device with browser fingerprint if provided
-    if (browser_fingerprint && data) {
+    // Update the device with hardware fingerprint if provided
+    if (hardware_fingerprint && data) {
       const { error: updateError } = await supabase
         .from('devices')
         .update({ 
-          browser_fingerprint,
+          hardware_fingerprint,
           is_current_device: is_current_device
         })
         .eq('id', data)
@@ -134,7 +135,7 @@ export async function GET(request: NextRequest) {
 
     const url = new URL(request.url)
     const currentOnly = url.searchParams.get('current_only') === 'true'
-    const browserFingerprint = url.searchParams.get('browser_fingerprint')
+    const hardwareFingerprint = url.searchParams.get('hardware_fingerprint')
 
     let query = supabase
       .from('devices')
@@ -151,15 +152,15 @@ export async function GET(request: NextRequest) {
         battery_level,
         last_ping_at,
         created_at,
-        browser_fingerprint,
+        hardware_fingerprint,
         is_current_device
       `)
       .eq('owner_id', user.id)
       .in('device_type', ['phone', 'tablet', 'watch', 'laptop'])
 
     // Filter for current device only if requested
-    if (currentOnly && browserFingerprint) {
-      query = query.eq('browser_fingerprint', browserFingerprint)
+    if (currentOnly && hardwareFingerprint) {
+      query = query.eq('hardware_fingerprint', hardwareFingerprint)
     }
 
     const { data: devices, error } = await query.order('created_at', { ascending: false })
