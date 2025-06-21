@@ -255,6 +255,53 @@ export type Database = {
           },
         ]
       }
+      device_locations: {
+        Row: {
+          accuracy: number | null
+          altitude: number | null
+          created_at: string | null
+          device_id: string | null
+          heading: number | null
+          id: string
+          latitude: number
+          longitude: number
+          recorded_at: string
+          speed: number | null
+        }
+        Insert: {
+          accuracy?: number | null
+          altitude?: number | null
+          created_at?: string | null
+          device_id?: string | null
+          heading?: number | null
+          id?: string
+          latitude: number
+          longitude: number
+          recorded_at: string
+          speed?: number | null
+        }
+        Update: {
+          accuracy?: number | null
+          altitude?: number | null
+          created_at?: string | null
+          device_id?: string | null
+          heading?: number | null
+          id?: string
+          latitude?: number
+          longitude?: number
+          recorded_at?: string
+          speed?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_locations_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       devices: {
         Row: {
           adhesive: boolean | null
@@ -358,214 +405,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      rental_history: {
-        Row: {
-          condition_notes: string | null
-          device_id: string | null
-          id: string
-          refund_amount: number | null
-          refund_processed: boolean | null
-          rented_at: string | null
-          return_approved: boolean | null
-          returned_at: string | null
-          shipping_address: Json | null
-          tracking_number: string | null
-          user_id: string | null
-        }
-        Insert: {
-          condition_notes?: string | null
-          device_id?: string | null
-          id?: string
-          refund_amount?: number | null
-          refund_processed?: boolean | null
-          rented_at?: string | null
-          return_approved?: boolean | null
-          returned_at?: string | null
-          shipping_address?: Json | null
-          tracking_number?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          condition_notes?: string | null
-          device_id?: string | null
-          id?: string
-          refund_amount?: number | null
-          refund_processed?: boolean | null
-          rented_at?: string | null
-          return_approved?: boolean | null
-          returned_at?: string | null
-          shipping_address?: Json | null
-          tracking_number?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "rental_history_device_id_fkey"
-            columns: ["device_id"]
-            isOneToOne: false
-            referencedRelation: "devices"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      subscriptions: {
-        Row: {
-          canceled_at: string | null
-          created_at: string | null
-          devices_covered: number
-          id: string
-          is_active: boolean | null
-          plan_type: string
-          price_monthly: number
-          renewal_date: string
-          stripe_subscription_id: string | null
-          user_id: string | null
-        }
-        Insert: {
-          canceled_at?: string | null
-          created_at?: string | null
-          devices_covered?: number
-          id?: string
-          is_active?: boolean | null
-          plan_type: string
-          price_monthly?: number
-          renewal_date: string
-          stripe_subscription_id?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          canceled_at?: string | null
-          created_at?: string | null
-          devices_covered?: number
-          id?: string
-          is_active?: boolean | null
-          plan_type?: string
-          price_monthly?: number
-          renewal_date?: string
-          stripe_subscription_id?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-      subscription_devices: {
-        Row: {
-          allocated_at: string | null
-          device_id: string | null
-          id: string
-          subscription_id: string | null
-        }
-        Insert: {
-          allocated_at?: string | null
-          device_id?: string | null
-          id?: string
-          subscription_id?: string | null
-        }
-        Update: {
-          allocated_at?: string | null
-          device_id?: string | null
-          id?: string
-          subscription_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "subscription_devices_device_id_fkey"
-            columns: ["device_id"]
-            isOneToOne: false
-            referencedRelation: "devices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "subscription_devices_subscription_id_fkey"
-            columns: ["subscription_id"]
-            isOneToOne: false
-            referencedRelation: "subscriptions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      tag_shares: {
-        Row: {
-          expires_at: string | null
-          id: string
-          is_active: boolean | null
-          owner_id: string | null
-          permissions: string
-          shared_at: string | null
-          shared_with_user_id: string | null
-          tag_id: string | null
-        }
-        Insert: {
-          expires_at?: string | null
-          id?: string
-          is_active?: boolean | null
-          owner_id?: string | null
-          permissions: string
-          shared_at?: string | null
-          shared_with_user_id?: string | null
-          tag_id?: string | null
-        }
-        Update: {
-          expires_at?: string | null
-          id?: string
-          is_active?: boolean | null
-          owner_id?: string | null
-          permissions?: string
-          shared_at?: string | null
-          shared_with_user_id?: string | null
-          tag_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "tag_shares_tag_id_fkey"
-            columns: ["tag_id"]
-            isOneToOne: false
-            referencedRelation: "devices"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      users: {
-        Row: {
-          created_at: string | null
-          current_devices: number | null
-          device_limit: number | null
-          email: string
-          full_name: string | null
-          id: string
-          is_premium: boolean | null
-          owned_tags: number | null
-          phone: string | null
-          role: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          current_devices?: number | null
-          device_limit?: number | null
-          email: string
-          full_name?: string | null
-          id: string
-          is_premium?: boolean | null
-          owned_tags?: number | null
-          phone?: string | null
-          role?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          current_devices?: number | null
-          device_limit?: number | null
-          email?: string
-          full_name?: string | null
-          id?: string
-          is_premium?: boolean | null
-          owned_tags?: number | null
-          phone?: string | null
-          role?: string | null
-          updated_at?: string | null
-        }
-        Relationships: []
       }
       geofence_alerts: {
         Row: {
@@ -879,6 +718,56 @@ export type Database = {
           },
         ]
       }
+      rental_history: {
+        Row: {
+          condition_notes: string | null
+          device_id: string | null
+          id: string
+          refund_amount: number | null
+          refund_processed: boolean | null
+          rented_at: string | null
+          return_approved: boolean | null
+          returned_at: string | null
+          shipping_address: Json | null
+          tracking_number: string | null
+          user_id: string | null
+        }
+        Insert: {
+          condition_notes?: string | null
+          device_id?: string | null
+          id?: string
+          refund_amount?: number | null
+          refund_processed?: boolean | null
+          rented_at?: string | null
+          return_approved?: boolean | null
+          returned_at?: string | null
+          shipping_address?: Json | null
+          tracking_number?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          condition_notes?: string | null
+          device_id?: string | null
+          id?: string
+          refund_amount?: number | null
+          refund_processed?: boolean | null
+          rented_at?: string | null
+          return_approved?: boolean | null
+          returned_at?: string | null
+          shipping_address?: Json | null
+          tracking_number?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_history_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reports: {
         Row: {
           contact_info: Json | null
@@ -982,6 +871,122 @@ export type Database = {
         }
         Relationships: []
       }
+      subscription_devices: {
+        Row: {
+          allocated_at: string | null
+          device_id: string | null
+          id: string
+          subscription_id: string | null
+        }
+        Insert: {
+          allocated_at?: string | null
+          device_id?: string | null
+          id?: string
+          subscription_id?: string | null
+        }
+        Update: {
+          allocated_at?: string | null
+          device_id?: string | null
+          id?: string
+          subscription_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_devices_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_devices_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscriptions: {
+        Row: {
+          canceled_at: string | null
+          created_at: string | null
+          devices_covered: number
+          id: string
+          is_active: boolean | null
+          plan_type: string
+          price_monthly: number
+          renewal_date: string
+          stripe_subscription_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          canceled_at?: string | null
+          created_at?: string | null
+          devices_covered?: number
+          id?: string
+          is_active?: boolean | null
+          plan_type: string
+          price_monthly?: number
+          renewal_date: string
+          stripe_subscription_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          canceled_at?: string | null
+          created_at?: string | null
+          devices_covered?: number
+          id?: string
+          is_active?: boolean | null
+          plan_type?: string
+          price_monthly?: number
+          renewal_date?: string
+          stripe_subscription_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      tag_shares: {
+        Row: {
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          owner_id: string | null
+          permissions: string
+          shared_at: string | null
+          shared_with_user_id: string | null
+          tag_id: string | null
+        }
+        Insert: {
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          owner_id?: string | null
+          permissions: string
+          shared_at?: string | null
+          shared_with_user_id?: string | null
+          tag_id?: string | null
+        }
+        Update: {
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          owner_id?: string | null
+          permissions?: string
+          shared_at?: string | null
+          shared_with_user_id?: string | null
+          tag_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tag_shares_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tags: {
         Row: {
           battery_level: number | null
@@ -1051,6 +1056,48 @@ export type Database = {
           },
         ]
       }
+      users: {
+        Row: {
+          created_at: string | null
+          current_devices: number | null
+          device_limit: number | null
+          email: string
+          full_name: string | null
+          id: string
+          is_premium: boolean | null
+          owned_tags: number | null
+          phone: string | null
+          role: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_devices?: number | null
+          device_limit?: number | null
+          email: string
+          full_name?: string | null
+          id: string
+          is_premium?: boolean | null
+          owned_tags?: number | null
+          phone?: string | null
+          role?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_devices?: number | null
+          device_limit?: number | null
+          email?: string
+          full_name?: string | null
+          id?: string
+          is_premium?: boolean | null
+          owned_tags?: number | null
+          phone?: string | null
+          role?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       active_tags_with_location: {
@@ -1067,6 +1114,44 @@ export type Database = {
           partner_name: string | null
           status: Database["public"]["Enums"]["tag_status"] | null
           tag_id: string | null
+        }
+        Relationships: []
+      }
+      admin_device_inventory: {
+        Row: {
+          battery_level: number | null
+          created_at: string | null
+          data_remaining_mb: number | null
+          is_active: boolean | null
+          is_rented: boolean | null
+          last_ping_at: string | null
+          owner_email: string | null
+          owner_id: string | null
+          tag_id: string | null
+          type: string | null
+        }
+        Relationships: []
+      }
+      admin_rental_overview: {
+        Row: {
+          data_remaining_mb: number | null
+          id: string | null
+          refund_amount: number | null
+          refund_processed: boolean | null
+          rented_at: string | null
+          renter_email: string | null
+          return_approved: boolean | null
+          returned_at: string | null
+          tag_id: string | null
+        }
+        Relationships: []
+      }
+      admin_subscription_analytics: {
+        Row: {
+          active_subscriptions: number | null
+          avg_devices_per_sub: number | null
+          monthly_revenue: number | null
+          plan_type: string | null
         }
         Relationships: []
       }
@@ -1145,76 +1230,39 @@ export type Database = {
       }
     }
     Functions: {
-      calculate_subscription_cost: {
-        Args: { p_devices_covered?: number }
-        Returns: number
-      }
-      register_device: {
-        Args: {
-          p_tag_id: string
-          p_type: string
-          p_adhesive?: boolean
-          p_owner_id?: string
-        }
-        Returns: string
-      }
-      is_admin: {
-        Args: { user_id: string }
-        Returns: boolean
-      }
-      generate_sample_pings: {
-        Args: {
-          tag_uuid: string
-          start_lat: number
-          start_lng: number
-          end_lat: number
-          end_lng: number
-          num_pings?: number
-        }
-        Returns: undefined
-      }
+      [_ in never]: never
     }
     Enums: {
       partner_type: "airline" | "shipping" | "hotel" | "government"
       tag_status: "active" | "inactive" | "lost" | "found"
     }
     CompositeTypes: {
-      geometry_dump: {
-        path: number[] | null
-        geom: unknown | null
-      }
-      valid_detail: {
-        valid: boolean | null
-        reason: string | null
-        location: unknown | null
-      }
+      [_ in never]: never
     }
   }
 }
 
-type DefaultSchema = Database[Extract<keyof Database, "public">]
+type PublicSchema = Database[Extract<keyof Database, "public">]
 
 export type Tables<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+  PublicTableNameOrOptions extends
+    | keyof (PublicSchema["Tables"] & PublicSchema["Views"])
     | { schema: keyof Database },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
+        Database[PublicTableNameOrOptions["schema"]]["Views"])
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
+      Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+  : PublicTableNameOrOptions extends keyof (PublicSchema["Tables"] &
+        PublicSchema["Views"])
+    ? (PublicSchema["Tables"] &
+        PublicSchema["Views"])[PublicTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -1222,22 +1270,20 @@ export type Tables<
     : never
 
 export type TablesInsert<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
+  PublicTableNameOrOptions extends
+    | keyof PublicSchema["Tables"]
     | { schema: keyof Database },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
+    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -1245,22 +1291,20 @@ export type TablesInsert<
     : never
 
 export type TablesUpdate<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
+  PublicTableNameOrOptions extends
+    | keyof PublicSchema["Tables"]
     | { schema: keyof Database },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
+    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -1268,31 +1312,59 @@ export type TablesUpdate<
     : never
 
 export type Enums<
-  DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
+  PublicEnumNameOrOptions extends
+    | keyof PublicSchema["Enums"]
     | { schema: keyof Database },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+  EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
-> = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+> = PublicEnumNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : PublicEnumNameOrOptions extends keyof PublicSchema["Enums"]
+    ? PublicSchema["Enums"][PublicEnumNameOrOptions]
     : never
 
-export type CompositeTypes<
-  PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof Database },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
-> = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never 
+// Helper type for ad credits
+export interface AdCredits {
+  user_id: string
+  credit_balance: number
+  total_earned: number
+  total_redeemed: number
+  last_redeemed: string | null
+  daily_views_count: number
+  last_view_date: string
+  created_at: string
+  updated_at: string
+}
+
+// Helper type for devices (the new monetization table)
+export interface Device {
+  id: string
+  tag_id: string
+  type: 'standard' | 'returnable'
+  adhesive: boolean
+  registered_at: string
+  owner_id: string | null
+  is_rented: boolean
+  data_remaining_mb: number
+  is_active: boolean
+  battery_level: number | null
+  last_ping_at: string | null
+  firmware_version: string
+  created_at: string
+  updated_at: string
+}
+
+// Helper type for subscriptions
+export interface Subscription {
+  id: string
+  user_id: string
+  plan_type: 'basic' | 'family' | 'enterprise'
+  devices_covered: number
+  is_active: boolean
+  created_at: string
+  renewal_date: string
+  canceled_at: string | null
+  stripe_subscription_id: string | null
+  price_monthly: number
+} 
