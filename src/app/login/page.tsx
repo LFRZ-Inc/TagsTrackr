@@ -91,22 +91,34 @@ export default function LoginPage() {
 
     setResendingConfirmation(true)
     setError('')
+    setMessage('')
+
+    console.log('Starting resend confirmation for:', email)
 
     try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`
-        }
+      // Try the test API endpoint first for better debugging
+      const response = await fetch('/api/test-resend', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
       })
 
-      if (error) {
-        setError(error.message)
-      } else {
-        setMessage(`Confirmation email sent to ${email}. Please check your inbox and spam folder.`)
+      const result = await response.json()
+      console.log('Resend API response:', result)
+
+      if (!response.ok) {
+        console.error('Resend API error:', result)
+        setError(result.error || 'Failed to send confirmation email')
+        return
       }
+
+      setMessage(`Confirmation email sent to ${email}. Please check your inbox and spam folder.`)
+      console.log('Confirmation email sent successfully')
+
     } catch (err) {
+      console.error('Resend confirmation error:', err)
       setError('Failed to resend confirmation email')
     } finally {
       setResendingConfirmation(false)
@@ -248,16 +260,21 @@ export default function LoginPage() {
                     Forgot your password?
                   </a>
                 </div>
-                <div>
-                  <button
-                    type="button"
-                    onClick={handleResendConfirmation}
-                    disabled={resendingConfirmation || !email}
-                    className="font-medium text-primary-600 hover:text-primary-500 disabled:text-gray-400 disabled:cursor-not-allowed"
-                  >
-                    {resendingConfirmation ? 'Sending...' : 'Resend confirmation email'}
-                  </button>
-                </div>
+                                 <div>
+                   <button
+                     type="button"
+                     onClick={handleResendConfirmation}
+                     disabled={resendingConfirmation || !email}
+                     className="font-medium text-primary-600 hover:text-primary-500 disabled:text-gray-400 disabled:cursor-not-allowed"
+                   >
+                     {resendingConfirmation ? 'Sending...' : 'Resend confirmation email'}
+                   </button>
+                 </div>
+                 {process.env.NODE_ENV === 'development' && (
+                   <div className="text-xs text-gray-500">
+                     Debug: Check browser console for detailed logs
+                   </div>
+                 )}
               </div>
             </div>
 
