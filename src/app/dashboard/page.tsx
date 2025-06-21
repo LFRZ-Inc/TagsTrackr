@@ -37,6 +37,7 @@ import type { User as SupabaseUser } from '@supabase/supabase-js'
 import InteractiveMap from '@/components/InteractiveMap'
 import DeviceTypeSelector from '@/components/DeviceTypeSelector'
 import AdBanner from '@/components/ads/AdBanner'
+import PhoneTracking from '@/components/PhoneTracking'
 
 interface Tag {
   id: string
@@ -383,6 +384,11 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Phone Tracking Section */}
+        <div className="mb-8">
+          <PhoneTracking onDeviceUpdate={fetchPersonalDevices} />
+        </div>
+
         {/* Controls */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div className="flex flex-col sm:flex-row gap-4 flex-1">
@@ -564,10 +570,12 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Ad Banner */}
-        <div className="mt-8">
-          <AdBanner pageContext="dashboard" />
-        </div>
+        {/* Ad Banner - Only for non-premium users */}
+        {user && !user.user_metadata?.is_premium && (
+          <div className="mt-8">
+            <AdBanner pageContext="dashboard" />
+          </div>
+        )}
       </div>
 
       {/* Add Device Modal */}
