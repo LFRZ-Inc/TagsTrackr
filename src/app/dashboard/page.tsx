@@ -30,7 +30,8 @@ import {
   Map,
   Home,
   Activity,
-  X
+  X,
+  AlertCircle
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
@@ -103,18 +104,26 @@ export default function Dashboard() {
 
   async function checkUser() {
     try {
+      console.log('🔍 Checking user authentication...')
       const { data: { user }, error } = await supabase.auth.getUser()
-      if (error) throw error
+      if (error) {
+        console.error('❌ Auth error:', error)
+        throw error
+      }
       
       if (!user) {
+        console.log('❌ No user found, redirecting to login')
         router.push('/login')
         return
       }
       
+      console.log('✅ User authenticated:', user.email)
       setUser(user)
     } catch (error) {
-      console.error('Error checking user:', error)
+      console.error('❌ Error checking user:', error)
       router.push('/login')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -272,6 +281,27 @@ export default function Dashboard() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading dashboard...</p>
+          <p className="text-sm text-gray-500 mt-2">Checking authentication and fetching your devices</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-600 mb-4">
+            <AlertCircle className="h-12 w-12 mx-auto mb-2" />
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Authentication Required</h2>
+          <p className="text-gray-600 mb-4">Please log in to access your dashboard</p>
+          <Link
+            href="/login"
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Go to Login
+          </Link>
         </div>
       </div>
     )
@@ -431,13 +461,15 @@ export default function Dashboard() {
               </button>
             </div>
             
-            <button
-              onClick={() => setShowAddDevice(true)}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Device
-            </button>
+            {user && (
+              <button
+                onClick={() => setShowAddDevice(true)}
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Device
+              </button>
+            )}
             
             <Link
               href="/register-tag"
@@ -498,13 +530,15 @@ export default function Dashboard() {
                     : "No devices match your search"
                   }
                 </p>
-                <button
-                  onClick={() => setShowAddDevice(true)}
-                  className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Your First Device
-                </button>
+                {user && (
+                  <button
+                    onClick={() => setShowAddDevice(true)}
+                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Your First Device
+                  </button>
+                )}
               </div>
             ) : (
               <div className="space-y-3">
@@ -579,7 +613,7 @@ export default function Dashboard() {
       </div>
 
       {/* Add Device Modal */}
-      {showAddDevice && (
+      {showAddDevice && user && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 relative">
             <button
@@ -590,6 +624,7 @@ export default function Dashboard() {
             </button>
             <h3 className="text-lg font-semibold mb-4">Add Current Device</h3>
             <DeviceTypeSelector
+              user={user}
               onDeviceAdded={() => {
                 fetchPersonalDevices()
                 setShowAddDevice(false)

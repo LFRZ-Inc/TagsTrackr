@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { Smartphone, Tablet, Watch, Laptop, Plus, X, AlertCircle, Info } from 'lucide-react';
+import { User } from '@supabase/supabase-js';
 
 interface DeviceTypeSelectorProps {
+  user?: User;
   onDeviceAdded: () => void;
   className?: string;
 }
@@ -135,7 +137,7 @@ const generateBrowserFingerprint = (): string => {
   return Math.abs(hash).toString(36);
 };
 
-export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: DeviceTypeSelectorProps) {
+export default function DeviceTypeSelector({ user, onDeviceAdded, className = '' }: DeviceTypeSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedType, setSelectedType] = useState('');
   const [deviceName, setDeviceName] = useState('');
@@ -212,35 +214,54 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
   }, [isOpen]);
 
   const handleAddDevice = async () => {
+    console.log('🔍 Attempting to add device...')
+    console.log('User:', user?.email || 'No user')
+    
+    if (!user) {
+      console.error('❌ No user provided to DeviceTypeSelector')
+      setError('Please log in to add devices. Try refreshing the page.');
+      return;
+    }
+
     if (!selectedType || !deviceName.trim()) {
+      console.error('❌ Missing device type or name')
       setError('Please select a device type and enter a name');
       return;
     }
 
+    console.log('📱 Adding device:', { selectedType, deviceName, user: user.email })
     setLoading(true);
     setError('');
     
     try {
       // Generate hardware fingerprint for device identification
       const hardwareFingerprint = generateHardwareFingerprint();
+      console.log('🔑 Hardware fingerprint:', hardwareFingerprint)
+      
+      const requestBody = {
+        device_type: selectedType,
+        device_name: deviceName.trim(),
+        device_model: deviceModel.trim() || undefined,
+        device_os: deviceOS.trim() || undefined,
+        hardware_fingerprint: hardwareFingerprint,
+        is_current_device: true // Mark this as the current browser/device
+      }
+      
+      console.log('📤 Sending request to /api/device/personal:', requestBody)
       
       const response = await fetch('/api/device/personal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          device_type: selectedType,
-          device_name: deviceName.trim(),
-          device_model: deviceModel.trim() || undefined,
-          device_os: deviceOS.trim() || undefined,
-          hardware_fingerprint: hardwareFingerprint,
-          is_current_device: true // Mark this as the current browser/device
-        })
+        body: JSON.stringify(requestBody)
       });
 
+      console.log('📥 Response status:', response.status)
       const data = await response.json();
+      console.log('📥 Response data:', data)
       
       if (response.ok) {
+        console.log('✅ Device added successfully!')
         // Store the device ID in localStorage for this browser
         localStorage.setItem('tagstrackr_current_device_id', data.device_id);
         localStorage.setItem('tagstrackr_device_hardware_fingerprint', hardwareFingerprint);
@@ -261,14 +282,15 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
           alert(`✅ ${deviceName} has been registered as your current device!\n\nYou can now enable location sharing from the dashboard to track this device.`);
         }
       } else {
+        console.error('❌ API request failed:', response.status, data)
         if (response.status === 401) {
-          setError('Please log in to add devices');
+          setError('Authentication failed. Please log out and log back in.');
         } else {
           setError(data.error || 'Failed to add device. Please try again.');
         }
       }
     } catch (error) {
-      console.error('Error adding device:', error);
+      console.error('❌ Network error adding device:', error);
       setError('Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
@@ -292,7 +314,13 @@ export default function DeviceTypeSelector({ onDeviceAdded, className = '' }: De
   if (!isOpen) {
     return (
       <button
-        onClick={() => setIsOpen(true)}
+        onClick={() => {
+          if (!user) {
+            alert('Please log in first to add devices.');
+            return;
+          }
+          setIsOpen(true);
+        }}
         className={`inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors ${className}`}
       >
         <Plus className="h-4 w-4 mr-2" />
