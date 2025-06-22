@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
@@ -325,8 +325,8 @@ export default function Dashboard() {
     return diffMinutes <= 10 && (locationSharingEnabled !== false)
   }
 
-  const allDevices = [
-    ...(tags || []).map(tag => ({
+  const allDevices = useMemo(() => {
+    const tagDevices = (tags || []).map(tag => ({
       id: tag.id,
       name: tag.description || tag.tag_id,
       type: 'gps_tag' as const,
@@ -334,8 +334,9 @@ export default function Dashboard() {
       batteryLevel: tag.battery_level,
       lastSeen: tag.last_seen_at,
       location: tag.current_location
-    })),
-    ...(personalDevices || []).map(device => ({
+    }))
+    
+    const personalDevicesList = (personalDevices || []).map(device => ({
       id: device.id,
       name: device.device_name,
       type: device.device_type as keyof typeof deviceTypeIcons,
@@ -344,7 +345,9 @@ export default function Dashboard() {
       lastSeen: device.last_ping_at,
       location: device.current_location
     }))
-  ]
+    
+    return [...tagDevices, ...personalDevicesList]
+  }, [tags, personalDevices])
 
   const getFilteredDevices = () => {
     let filtered = allDevices
