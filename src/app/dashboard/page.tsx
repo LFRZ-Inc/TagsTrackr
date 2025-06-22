@@ -39,7 +39,7 @@ import InteractiveMap from '@/components/InteractiveMap'
 import DeviceTypeSelector from '@/components/DeviceTypeSelector'
 import AdBanner from '@/components/ads/AdBanner'
 import PhoneTracking from '@/components/PhoneTracking'
-import LocationTester from '@/components/LocationTester'
+
 
 interface Tag {
   id: string
@@ -112,8 +112,20 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (user) {
-      fetchTags()
-      fetchPersonalDevices()
+      const loadDashboardData = async () => {
+        try {
+          await Promise.all([
+            fetchTags(),
+            fetchPersonalDevices()
+          ])
+        } catch (error) {
+          console.error('Error loading dashboard data:', error)
+        } finally {
+          setLoading(false)
+        }
+      }
+      
+      loadDashboardData()
       setupRealTime()
     }
   }, [user])
@@ -154,7 +166,16 @@ export default function Dashboard() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
-      if (error) throw error
+      if (error) {
+        // If tags table doesn't exist, just continue with empty array
+        if (error.code === '42P01') {
+          console.log('Tags table not found, continuing without tags')
+          setTags([])
+          return
+        }
+        throw error
+      }
+      
       setTags(data || [])
       
       if (data && data.length > 0 && !selectedTag) {
@@ -162,9 +183,10 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.error('Error fetching tags:', error)
+      // Set empty array to prevent blocking the dashboard
+      setTags([])
     } finally {
       setRefreshing(false)
-      setLoading(false)
     }
   }
 
@@ -172,14 +194,22 @@ export default function Dashboard() {
     if (!user) return
     
     try {
-      // First fetch devices
+      // First fetch devices - using user.id as string since personal_devices.user_id is TEXT
       const { data, error } = await supabase
         .from('personal_devices')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', user.id.toString())
         .order('created_at', { ascending: false })
 
-      if (error) throw error
+      if (error) {
+        // If personal_devices table doesn't exist, just continue with empty array
+        if (error.code === '42P01') {
+          console.log('Personal devices table not found, continuing without devices')
+          setPersonalDevices([])
+          return
+        }
+        throw error
+      }
       
             // For each device, check for location data in metadata or location_pings table
       const devicesWithLocation = await Promise.all((data || []).map(async (device) => {
@@ -241,6 +271,8 @@ export default function Dashboard() {
       setPersonalDevices(devicesWithLocation)
     } catch (error) {
       console.error('Error fetching personal devices:', error)
+      // Set empty array to prevent blocking the dashboard
+      setPersonalDevices([])
     }
   }
 
@@ -685,15 +717,13 @@ export default function Dashboard() {
                       </div>
                     )}
                     
-                    {/* Show location tester for personal devices without current location */}
+                    {/* Show location status for devices without current location */}
                     {device.type !== 'gps_tag' && !device.location && (
-                      <div className="mt-3">
-                        <LocationTester 
-                          deviceId={device.id}
-                          onLocationSent={() => {
-                            fetchPersonalDevices()
-                          }}
-                        />
+                      <div className="mt-3 text-sm text-gray-500">
+                        <span className="inline-flex items-center">
+                          <MapPin className="h-4 w-4 mr-1" />
+                          Location sharing enabled, waiting for location data...
+                        </span>
                       </div>
                     )}
                   </div>
