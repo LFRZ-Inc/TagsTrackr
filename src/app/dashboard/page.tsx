@@ -33,7 +33,7 @@ import {
   X,
   AlertCircle
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseClient } from '@/lib/supabase'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import InteractiveMap from '@/components/InteractiveMap'
 import DeviceTypeSelector from '@/components/DeviceTypeSelector'
@@ -93,6 +93,7 @@ const deviceTypeIcons = {
 }
 
 export default function Dashboard() {
+  const supabase = createSupabaseClient()
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [tags, setTags] = useState<Tag[]>([])
   const [personalDevices, setPersonalDevices] = useState<PersonalDevice[]>([])
