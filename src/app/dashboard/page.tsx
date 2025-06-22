@@ -26,11 +26,15 @@ import type { User as SupabaseUser } from '@supabase/supabase-js'
 
 interface PersonalDevice {
   id: string
+  tag_id: string
   device_name: string
   device_type: string
+  description: string | null
   location_sharing_active: boolean
+  is_active: boolean | null
   battery_level: number | null
   last_ping_at: string | null
+  last_seen_at: string | null
   current_location?: {
     latitude: number
     longitude: number
@@ -167,6 +171,12 @@ export default function Dashboard() {
       alert('❌ Error sending location')
     }
   }
+
+  // Convert PersonalDevice to Device for InteractiveMap compatibility
+  const convertToDevice = (device: PersonalDevice): any => ({
+    ...device,
+    is_active: device.location_sharing_active
+  })
 
   const filteredDevices = devices.filter(device =>
     device.device_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -396,10 +406,13 @@ export default function Dashboard() {
               
               <div className="p-0">
                 <InteractiveMap
-                  devices={filteredDevices}
-                  selectedDevice={selectedDevice}
+                  devices={filteredDevices.map(convertToDevice)}
+                  selectedDevice={selectedDevice ? convertToDevice(selectedDevice) : null}
                   height="400px"
-                  onDeviceSelect={setSelectedDevice}
+                  onDeviceSelect={(device: any) => {
+                    const personalDevice = devices.find(d => d.id === device.id)
+                    if (personalDevice) setSelectedDevice(personalDevice)
+                  }}
                   realTimeUpdates={true}
                   onRefresh={fetchDevices}
                 />
