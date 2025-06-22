@@ -24,19 +24,17 @@ export default function LocationTester({ deviceId, onLocationSent }: LocationTes
         return
       }
 
-      // Send a test location ping (New York City coordinates)
-      const response = await fetch('/api/ping/personal', {
+      // Send a test location ping (New York City coordinates) using simple endpoint
+      const response = await fetch('/api/ping/simple', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           device_id: deviceId,
           latitude: 40.7589,
           longitude: -73.9851,
-          accuracy: 10.0,
-          source: 'manual_test'
+          accuracy: 10.0
         })
       })
 

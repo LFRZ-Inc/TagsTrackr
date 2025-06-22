@@ -70,19 +70,44 @@ export async function POST(request: NextRequest) {
     })
 
     // Record location ping directly to location_pings table
-    const { data, error } = await supabaseAuth
-      .from('location_pings')
-      .insert({
-        device_id: device_id,
-        user_id: userData.user.id,
-        user_email: userData.user.email!,
-        latitude: latitude,
-        longitude: longitude,
-        accuracy: accuracy,
-        timestamp: new Date().toISOString()
-      })
-      .select()
-      .single()
+    // Try the new schema first, fallback to old schema if needed
+    let data, error
+    
+    try {
+      const result = await supabaseAuth
+        .from('location_pings')
+        .insert({
+          device_id: device_id,
+          user_id: userData.user.id,
+          user_email: userData.user.email!,
+          latitude: latitude,
+          longitude: longitude,
+          accuracy: accuracy,
+          timestamp: new Date().toISOString()
+        })
+        .select()
+        .single()
+      
+      data = result.data
+      error = result.error
+    } catch (schemaError) {
+      // If location_pings doesn't exist, try inserting a manual GPS ping record
+      console.log('location_pings table not found, creating manual record')
+      
+      // First, let's just update the device's last_ping_at
+      const updateResult = await supabaseAuth
+        .from('personal_devices')
+        .update({ 
+          last_ping_at: new Date().toISOString(),
+          location_sharing_enabled: true 
+        })
+        .eq('id', device_id)
+        .select()
+        .single()
+        
+      data = updateResult.data
+      error = updateResult.error
+    }
 
     if (error) {
       console.error('❌ [API] Database error:', error)

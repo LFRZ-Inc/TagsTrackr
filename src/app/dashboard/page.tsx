@@ -62,6 +62,14 @@ interface PersonalDevice {
   location_sharing_enabled: boolean
   battery_level: number | null
   last_ping_at: string | null
+  metadata?: {
+    current_location?: {
+      latitude: number
+      longitude: number
+      accuracy: number
+      timestamp: string
+    }
+  }
   current_location?: {
     latitude: number
     longitude: number
@@ -173,23 +181,37 @@ export default function Dashboard() {
 
       if (error) throw error
       
-      // For each device, fetch its latest location ping
+            // For each device, check for location data in metadata or location_pings table
       const devicesWithLocation = await Promise.all((data || []).map(async (device) => {
-        const { data: latestPing } = await supabase
-          .from('location_pings')
-          .select('latitude, longitude, accuracy, timestamp')
-          .eq('device_id', device.id)
-          .order('timestamp', { ascending: false })
-          .limit(1)
-          .single()
-        
-        return {
-          ...device,
-          current_location: latestPing ? {
-            latitude: latestPing.latitude,
-            longitude: latestPing.longitude,
-            timestamp: latestPing.timestamp
-          } : undefined
+        // First check if location is stored in metadata
+        if (device.metadata?.current_location) {
+          return {
+            ...device,
+            current_location: device.metadata.current_location
+          }
+        }
+
+        // Fallback: try to get from location_pings table
+        try {
+          const { data: latestPing } = await supabase
+            .from('location_pings')
+            .select('latitude, longitude, accuracy, timestamp')
+            .eq('device_id', device.id)
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .single()
+
+          return {
+            ...device,
+            current_location: latestPing ? {
+              latitude: latestPing.latitude,
+              longitude: latestPing.longitude,
+              timestamp: latestPing.timestamp
+            } : undefined
+          }
+        } catch (error) {
+          // If location_pings table doesn't exist or has issues, just return device without location
+          return device
         }
       }))
       
