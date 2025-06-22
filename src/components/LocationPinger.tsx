@@ -142,9 +142,9 @@ export default function LocationPinger({
         },
         body: JSON.stringify({
           device_id: deviceId,
-          latitude: location.latitude.toString(),
-          longitude: location.longitude.toString(),
-          accuracy: location.accuracy.toString()
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracy: location.accuracy
         })
       })
 

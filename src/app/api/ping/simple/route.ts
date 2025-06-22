@@ -8,10 +8,26 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('🎯 Simple ping endpoint called')
+    
+    // Check environment variables
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('❌ Missing environment variables:', { 
+        hasUrl: !!supabaseUrl, 
+        hasServiceKey: !!supabaseServiceKey 
+      })
+      return NextResponse.json({ 
+        error: 'Server configuration error' 
+      }, { status: 500 })
+    }
+
     const body = await request.json()
+    console.log('📍 Request body:', body)
+    
     const { device_id, latitude, longitude, accuracy = 10.0 } = body
 
-    if (!device_id || !latitude || !longitude) {
+    if (!device_id || latitude === undefined || longitude === undefined) {
+      console.error('❌ Missing required fields:', { device_id, latitude, longitude })
       return NextResponse.json({ 
         error: 'Missing required fields: device_id, latitude, longitude' 
       }, { status: 400 })
@@ -19,6 +35,21 @@ export async function POST(request: NextRequest) {
 
     // Use service role to bypass RLS
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    console.log('✅ Supabase client created')
+
+    // Validate numeric values
+    const lat = typeof latitude === 'number' ? latitude : parseFloat(latitude)
+    const lng = typeof longitude === 'number' ? longitude : parseFloat(longitude)
+    const acc = typeof accuracy === 'number' ? accuracy : parseFloat(accuracy)
+
+    if (isNaN(lat) || isNaN(lng) || isNaN(acc)) {
+      console.error('❌ Invalid numeric values:', { lat, lng, acc })
+      return NextResponse.json({ 
+        error: 'Invalid numeric values for coordinates' 
+      }, { status: 400 })
+    }
+
+    console.log('📍 Updating device with location:', { device_id, lat, lng, acc })
 
     // Update the device with location data and mark as active
     const { data, error } = await supabase
@@ -28,9 +59,9 @@ export async function POST(request: NextRequest) {
         location_sharing_enabled: true,
         metadata: {
           current_location: {
-            latitude: parseFloat(latitude),
-            longitude: parseFloat(longitude),
-            accuracy: parseFloat(accuracy),
+            latitude: lat,
+            longitude: lng,
+            accuracy: acc,
             timestamp: new Date().toISOString()
           }
         }
@@ -40,12 +71,14 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Device update error:', error)
+      console.error('❌ Database update error:', error)
       return NextResponse.json({ 
         error: 'Failed to update device location',
         details: error.message 
       }, { status: 500 })
     }
+
+    console.log('✅ Device updated successfully:', data)
 
     return NextResponse.json({ 
       success: true,
