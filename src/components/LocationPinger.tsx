@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { MapPin, Loader2, CheckCircle, AlertCircle, Navigation, RefreshCw } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseClient } from '@/lib/supabase'
 
 interface LocationPingerProps {
   deviceId: string
@@ -137,6 +137,7 @@ export default function LocationPinger({
 
     try {
       // Get the current user session
+      const supabase = createSupabaseClient()
       const { data: { session } } = await supabase.auth.getSession()
       
       if (!session) {
