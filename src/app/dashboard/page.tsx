@@ -326,7 +326,7 @@ export default function Dashboard() {
   }
 
   const allDevices = [
-    ...tags.map(tag => ({
+    ...(tags || []).map(tag => ({
       id: tag.id,
       name: tag.description || tag.tag_id,
       type: 'gps_tag' as const,
@@ -335,7 +335,7 @@ export default function Dashboard() {
       lastSeen: tag.last_seen_at,
       location: tag.current_location
     })),
-    ...personalDevices.map(device => ({
+    ...(personalDevices || []).map(device => ({
       id: device.id,
       name: device.device_name,
       type: device.device_type as keyof typeof deviceTypeIcons,
