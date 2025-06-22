@@ -55,8 +55,21 @@ export async function POST(request: NextRequest) {
     console.log('🔍 [API] POST /api/device/personal - Starting request')
     console.log('🍪 [API] Request cookies:', request.cookies.getAll().map(c => ({ name: c.name, value: c.value.substring(0, 20) + '...' })))
     
+    const authHeader = request.headers.get('authorization')
+    console.log('🔐 [API] Authorization header:', authHeader ? 'Bearer ' + authHeader.substring(7, 27) + '...' : 'None')
+    
     const { supabase, response } = createSupabaseClient(request)
     console.log('🔧 [API] Supabase client created')
+    
+    // If we have an Authorization header, set the session manually
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7)
+      await supabase.auth.setSession({
+        access_token: token,
+        refresh_token: '' // We don't need refresh token for this operation
+      })
+      console.log('🔑 [API] Set session from Authorization header')
+    }
     
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     console.log('🔐 [API] Auth check result:', { 
@@ -142,7 +155,18 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const authHeader = request.headers.get('authorization')
     const { supabase, response } = createSupabaseClient(request)
+    
+    // If we have an Authorization header, set the session manually
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7)
+      await supabase.auth.setSession({
+        access_token: token,
+        refresh_token: ''
+      })
+    }
+    
     const { data: { user } } = await supabase.auth.getUser()
     
     if (!user) {
@@ -199,7 +223,18 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const authHeader = request.headers.get('authorization')
     const { supabase, response } = createSupabaseClient(request)
+    
+    // If we have an Authorization header, set the session manually
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7)
+      await supabase.auth.setSession({
+        access_token: token,
+        refresh_token: ''
+      })
+    }
+    
     const { data: { user } } = await supabase.auth.getUser()
     
     if (!user) {

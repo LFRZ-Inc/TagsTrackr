@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Smartphone, Tablet, Watch, Laptop, Plus, X, AlertCircle, Info } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
 
 interface DeviceTypeSelectorProps {
   user?: User;
@@ -234,6 +235,17 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
     setError('');
     
     try {
+      // Get the current session and access token
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session?.access_token) {
+        console.error('❌ Failed to get access token:', sessionError)
+        setError('Authentication failed. Please log out and log back in.');
+        return;
+      }
+      
+      console.log('🔑 Got access token:', session.access_token.substring(0, 20) + '...')
+      
       // Generate hardware fingerprint for device identification
       const hardwareFingerprint = generateHardwareFingerprint();
       console.log('🔑 Hardware fingerprint:', hardwareFingerprint)
@@ -251,7 +263,10 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
       
       const response = await fetch('/api/device/personal', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
         credentials: 'include',
         body: JSON.stringify(requestBody)
       });
