@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       .from('personal_devices')
       .update({
         last_ping_at: new Date().toISOString(),
-        location_sharing_enabled: true,
+        location_sharing_active: true,
         metadata: {
           current_location: {
             latitude: lat,

@@ -60,7 +60,7 @@ interface PersonalDevice {
   device_name: string
   device_type: string
   device_model?: string
-  location_sharing_enabled: boolean
+  location_sharing_active: boolean
   battery_level: number | null
   last_ping_at: string | null
   metadata?: {
@@ -248,7 +248,7 @@ export default function Dashboard() {
 
         // Final fallback: if device has location sharing enabled and was recently pinged,
         // show it at a default location (NYC) to demonstrate it's working
-        if (device.location_sharing_enabled && device.last_ping_at) {
+        if (device.location_sharing_active && device.last_ping_at) {
           const lastPing = new Date(device.last_ping_at)
           const now = new Date()
           const minutesAgo = (now.getTime() - lastPing.getTime()) / (1000 * 60)
@@ -338,7 +338,7 @@ export default function Dashboard() {
       id: device.id,
       name: device.device_name,
       type: device.device_type as keyof typeof deviceTypeIcons,
-      isActive: isDeviceActive(device.last_ping_at, device.location_sharing_enabled),
+      isActive: isDeviceActive(device.last_ping_at, device.location_sharing_active),
       batteryLevel: device.battery_level,
       lastSeen: device.last_ping_at,
       location: device.current_location
