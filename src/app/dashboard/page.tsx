@@ -39,6 +39,7 @@ import InteractiveMap from '@/components/InteractiveMap'
 import DeviceTypeSelector from '@/components/DeviceTypeSelector'
 import AdBanner from '@/components/ads/AdBanner'
 import PhoneTracking from '@/components/PhoneTracking'
+import LocationPinger from '@/components/LocationPinger'
 
 
 interface Tag {
@@ -632,6 +633,13 @@ export default function Dashboard() {
                 height="500px"
                 showRoute={true}
                 autoCenter={true}
+                realTimeUpdates={true}
+                showAccuracyCircles={true}
+                enableGeocoding={true}
+                onRefresh={() => {
+                  fetchTags()
+                  fetchPersonalDevices()
+                }}
               />
             </div>
           </div>
@@ -717,13 +725,20 @@ export default function Dashboard() {
                       </div>
                     )}
                     
-                    {/* Show location status for devices without current location */}
-                    {device.type !== 'gps_tag' && !device.location && (
-                      <div className="mt-3 text-sm text-gray-500">
-                        <span className="inline-flex items-center">
-                          <MapPin className="h-4 w-4 mr-1" />
-                          Location sharing enabled, waiting for location data...
-                        </span>
+                    {/* Location Pinger for personal devices */}
+                    {device.type !== 'gps_tag' && (
+                      <div className="mt-3">
+                        <LocationPinger 
+                          deviceId={device.id}
+                          autoRefresh={device.isActive}
+                          refreshInterval={5}
+                          onLocationSent={() => {
+                            fetchPersonalDevices()
+                          }}
+                          onError={(error) => {
+                            console.error('Location ping error:', error)
+                          }}
+                        />
                       </div>
                     )}
                   </div>

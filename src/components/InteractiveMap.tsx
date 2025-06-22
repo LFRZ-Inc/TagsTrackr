@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import dynamic from 'next/dynamic'
-import { MapPin, Battery, Signal, Clock } from 'lucide-react'
+import { MapPin, Battery, Signal, Clock, Map, Satellite, Mountain, RefreshCw, Target, Ruler } from 'lucide-react'
 
 // Dynamic import to avoid SSR issues with Leaflet
 const MapContainer = dynamic(
@@ -72,6 +72,9 @@ interface InteractiveMapProps {
   showRoute?: boolean
   autoCenter?: boolean
   realTimeUpdates?: boolean
+  onRefresh?: () => void
+  showAccuracyCircles?: boolean
+  enableGeocoding?: boolean
 }
 
 export default function InteractiveMap({
@@ -83,12 +86,19 @@ export default function InteractiveMap({
   onDeviceSelect,
   showRoute = false,
   autoCenter = true,
-  realTimeUpdates = false
+  realTimeUpdates = false,
+  onRefresh,
+  showAccuracyCircles = true,
+  enableGeocoding = true
 }: InteractiveMapProps) {
   const [map, setMap] = useState<any>(null)
   const [leafletLoaded, setLeafletLoaded] = useState(false)
   const [customIcon, setCustomIcon] = useState<any>(null)
   const [selectedIcon, setSelectedIcon] = useState<any>(null)
+  const [mapStyle, setMapStyle] = useState<'street' | 'satellite' | 'terrain'>('street')
+  const [showControls, setShowControls] = useState(true)
+  const [deviceAddresses, setDeviceAddresses] = useState<Record<string, string>>({})
+  const [refreshing, setRefreshing] = useState(false)
   const mapRef = useRef<any>(null)
 
   // Load Leaflet dynamically
@@ -181,6 +191,80 @@ export default function InteractiveMap({
     return new Date(timestamp).toLocaleString()
   }
 
+  // Geocoding function to get address from coordinates
+  const getAddressFromCoordinates = async (lat: number, lng: number, deviceId: string) => {
+    if (!enableGeocoding) return
+    
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
+      )
+      const data = await response.json()
+      
+      if (data.display_name) {
+        setDeviceAddresses(prev => ({
+          ...prev,
+          [deviceId]: data.display_name
+        }))
+      }
+    } catch (error) {
+      console.error('Geocoding error:', error)
+    }
+  }
+
+  // Update addresses when devices change
+  useEffect(() => {
+    if (enableGeocoding) {
+      devices.forEach(device => {
+        if (device.current_location?.latitude && device.current_location?.longitude) {
+          if (!deviceAddresses[device.id]) {
+            getAddressFromCoordinates(
+              device.current_location.latitude,
+              device.current_location.longitude,
+              device.id
+            )
+          }
+        }
+      })
+    }
+  }, [devices, enableGeocoding])
+
+  // Handle refresh
+  const handleRefresh = async () => {
+    if (onRefresh) {
+      setRefreshing(true)
+      try {
+        await onRefresh()
+      } finally {
+        setRefreshing(false)
+      }
+    }
+  }
+
+  // Get tile layer URL based on map style
+  const getTileLayerUrl = () => {
+    switch (mapStyle) {
+      case 'satellite':
+        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+      case 'terrain':
+        return 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
+      default:
+        return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+    }
+  }
+
+  // Get tile layer attribution based on map style
+  const getTileLayerAttribution = () => {
+    switch (mapStyle) {
+      case 'satellite':
+        return '&copy; <a href="https://www.esri.com/">Esri</a>'
+      case 'terrain':
+        return '&copy; <a href="https://opentopomap.org">OpenTopoMap</a> contributors'
+      default:
+        return '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }
+  }
+
   if (!leafletLoaded) {
     return (
       <div 
@@ -204,7 +288,63 @@ export default function InteractiveMap({
     : defaultCenter
 
   return (
-    <div className="w-full h-full rounded-lg overflow-hidden shadow-lg" style={{ height }}>
+    <div className="w-full h-full rounded-lg overflow-hidden shadow-lg relative" style={{ height }}>
+      {/* Map Controls */}
+      {showControls && (
+        <div className="absolute top-4 left-4 z-[1000] space-y-2">
+          {/* Map Style Switcher */}
+          <div className="bg-white rounded-lg shadow-lg p-2">
+            <div className="flex space-x-1">
+              <button
+                onClick={() => setMapStyle('street')}
+                className={`p-2 rounded ${mapStyle === 'street' ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                title="Street Map"
+              >
+                <Map className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setMapStyle('satellite')}
+                className={`p-2 rounded ${mapStyle === 'satellite' ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                title="Satellite View"
+              >
+                <Satellite className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setMapStyle('terrain')}
+                className={`p-2 rounded ${mapStyle === 'terrain' ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                title="Terrain Map"
+              >
+                <Mountain className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Refresh Button */}
+          {onRefresh && (
+            <div className="bg-white rounded-lg shadow-lg p-2">
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="p-2 rounded text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+                title="Refresh Device Locations"
+              >
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Real-time Updates Indicator */}
+      {realTimeUpdates && (
+        <div className="absolute top-4 right-4 z-[1000]">
+          <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm flex items-center">
+            <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
+            Live Updates
+          </div>
+        </div>
+      )}
+
       <MapContainer
         center={mapCenter}
         zoom={devices.length > 0 ? 13 : 4}
@@ -213,8 +353,8 @@ export default function InteractiveMap({
         whenReady={() => setMap(mapRef.current)}
       >
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url={getTileLayerUrl()}
+          attribution={getTileLayerAttribution()}
         />
 
         {/* Render device markers */}
@@ -223,53 +363,90 @@ export default function InteractiveMap({
           
           const isSelected = selectedDevice?.id === device.id
           const icon = customIcon ? customIcon(device.device_type, isSelected) : undefined
+          const position: [number, number] = [device.current_location.latitude, device.current_location.longitude]
+          const accuracy = device.current_location.accuracy || 0
 
           return (
-            <Marker
-              key={device.id}
-              position={[device.current_location.latitude, device.current_location.longitude]}
-              icon={icon}
-              eventHandlers={{
-                click: () => onDeviceSelect?.(device)
-              }}
-            >
-              <Popup>
-                <div className="p-2 min-w-[200px]">
-                  <div className="flex items-center gap-2 mb-2">
-                    <MapPin className="h-4 w-4 text-blue-600" />
-                    <h3 className="font-semibold text-gray-900">
-                      {device.device_name}
-                    </h3>
-                  </div>
-                  
-                  <div className="space-y-1 text-sm text-gray-600">
-                    <div className="flex items-center gap-1">
-                      <span className="font-medium">Type:</span>
-                      <span className="capitalize">{device.device_type.replace('_', ' ')}</span>
+            <div key={device.id}>
+              {/* Accuracy Circle */}
+              {showAccuracyCircles && accuracy > 0 && (
+                <Circle
+                  center={position}
+                  radius={accuracy}
+                  color="#3b82f6"
+                  fillColor="#3b82f6"
+                  fillOpacity={0.1}
+                  weight={1}
+                />
+              )}
+
+              {/* Device Marker */}
+              <Marker
+                position={position}
+                icon={icon}
+                eventHandlers={{
+                  click: () => onDeviceSelect?.(device)
+                }}
+              >
+                <Popup>
+                  <div className="p-3 min-w-[250px]">
+                    <div className="flex items-center gap-2 mb-3">
+                      <MapPin className="h-5 w-5 text-blue-600" />
+                      <h3 className="font-semibold text-gray-900 text-lg">
+                        {device.device_name}
+                      </h3>
+                      <div className={`w-3 h-3 rounded-full ${device.is_active ? 'bg-green-500' : 'bg-gray-400'}`} />
                     </div>
                     
-                    {device.battery_level && (
-                      <div className="flex items-center gap-1">
-                        <Battery className="h-3 w-3" />
-                        <span>{device.battery_level}%</span>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-gray-700">Type:</span>
+                        <span className="capitalize text-gray-600">{device.device_type.replace('_', ' ')}</span>
                       </div>
-                    )}
-                    
-                    {device.last_seen_at && (
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        <span>{formatTimestamp(device.last_seen_at)}</span>
+                      
+                      {device.battery_level !== null && (
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-gray-700">Battery:</span>
+                          <div className="flex items-center gap-1 text-gray-600">
+                            <Battery className="h-3 w-3" />
+                            <span>{device.battery_level}%</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {device.last_seen_at && (
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-gray-700">Last Seen:</span>
+                          <div className="flex items-center gap-1 text-gray-600">
+                            <Clock className="h-3 w-3" />
+                            <span>{formatTimestamp(device.last_seen_at)}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {accuracy > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-gray-700">Accuracy:</span>
+                          <span className="text-gray-600">±{Math.round(accuracy)}m</span>
+                        </div>
+                      )}
+                      
+                      <div className="border-t pt-2 mt-3">
+                        <div className="text-xs text-gray-500 space-y-1">
+                          <div>Coordinates: {device.current_location.latitude.toFixed(6)}, {device.current_location.longitude.toFixed(6)}</div>
+                          {deviceAddresses[device.id] && (
+                            <div className="mt-2">
+                              <span className="font-medium text-gray-700">Address:</span>
+                              <div className="text-gray-600 mt-1">{deviceAddresses[device.id]}</div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                    
-                    <div className="text-xs text-gray-500 mt-2">
-                      <div>Lat: {device.current_location.latitude.toFixed(6)}</div>
-                      <div>Lng: {device.current_location.longitude.toFixed(6)}</div>
                     </div>
                   </div>
-                </div>
-              </Popup>
-            </Marker>
+                </Popup>
+              </Marker>
+            </div>
           )
         })}
 
