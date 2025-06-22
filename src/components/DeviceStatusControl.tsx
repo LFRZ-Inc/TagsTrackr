@@ -7,7 +7,7 @@ interface DeviceStatusControlProps {
     id: string
     device_name: string
     device_type: string
-    location_sharing_active: boolean
+    location_sharing_enabled: boolean
     last_ping_at: string | null
   }
   onStatusChange?: () => void
@@ -213,7 +213,7 @@ export default function DeviceStatusControl({ device, onStatusChange }: DeviceSt
           <span>Last seen: {formatLastSeen(device.last_ping_at)}</span>
         </div>
         
-        {device.location_sharing_active && (
+        {device.location_sharing_enabled && (
           <div className="flex items-center space-x-1 text-green-600">
             <MapPin className="h-3 w-3" />
             <span>Sharing enabled</span>

@@ -29,7 +29,7 @@ interface Device {
   last_ping_at?: string | null;
   group_name: string | null;
   sharing_enabled?: boolean;
-  location_sharing_active?: boolean;
+  location_sharing_enabled?: boolean;
   hardware_fingerprint?: string;
   is_current_device?: boolean;
   current_location?: {
@@ -111,7 +111,7 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
         const device = devices.find(d => d.id === storedDeviceId);
         if (device) {
           setCurrentDevice(device);
-          setIsSharing(device.location_sharing_active || false);
+          setIsSharing(device.location_sharing_enabled || false);
           return;
         }
       }
@@ -122,7 +122,7 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
       
       if (device) {
         setCurrentDevice(device);
-        setIsSharing(device.location_sharing_active || false);
+        setIsSharing(device.location_sharing_enabled || false);
         // Store in localStorage for faster lookup next time
         localStorage.setItem('tagstrackr_current_device_id', device.id);
         localStorage.setItem('tagstrackr_device_hardware_fingerprint', hardwareFingerprint);
@@ -133,7 +133,7 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
         
         if (matchingDevices.length === 1) {
           setCurrentDevice(matchingDevices[0]);
-          setIsSharing(matchingDevices[0].location_sharing_active || false);
+          setIsSharing(matchingDevices[0].location_sharing_enabled || false);
         }
       }
     };

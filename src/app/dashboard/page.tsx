@@ -39,6 +39,7 @@ import InteractiveMap from '@/components/InteractiveMap'
 import DeviceTypeSelector from '@/components/DeviceTypeSelector'
 import AdBanner from '@/components/ads/AdBanner'
 import PhoneTracking from '@/components/PhoneTracking'
+import LocationTester from '@/components/LocationTester'
 
 interface Tag {
   id: string
@@ -58,13 +59,20 @@ interface PersonalDevice {
   device_name: string
   device_type: string
   device_model?: string
-  location_sharing_active: boolean
+  location_sharing_enabled: boolean
   battery_level: number | null
   last_ping_at: string | null
   current_location?: {
     latitude: number
     longitude: number
+    timestamp?: string
   }
+  location_pings?: Array<{
+    latitude: number
+    longitude: number
+    accuracy: number | null
+    timestamp: string
+  }>
 }
 
 const deviceTypeIcons = {
@@ -156,6 +164,7 @@ export default function Dashboard() {
     if (!user) return
     
     try {
+      // First fetch devices
       const { data, error } = await supabase
         .from('personal_devices')
         .select('*')
@@ -163,7 +172,28 @@ export default function Dashboard() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setPersonalDevices(data || [])
+      
+      // For each device, fetch its latest location ping
+      const devicesWithLocation = await Promise.all((data || []).map(async (device) => {
+        const { data: latestPing } = await supabase
+          .from('location_pings')
+          .select('latitude, longitude, accuracy, timestamp')
+          .eq('device_id', device.id)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .single()
+        
+        return {
+          ...device,
+          current_location: latestPing ? {
+            latitude: latestPing.latitude,
+            longitude: latestPing.longitude,
+            timestamp: latestPing.timestamp
+          } : undefined
+        }
+      }))
+      
+      setPersonalDevices(devicesWithLocation)
     } catch (error) {
       console.error('Error fetching personal devices:', error)
     }
@@ -218,7 +248,7 @@ export default function Dashboard() {
       id: device.id,
       name: device.device_name,
       type: device.device_type as keyof typeof deviceTypeIcons,
-      isActive: device.location_sharing_active,
+      isActive: device.location_sharing_enabled,
       batteryLevel: device.battery_level,
       lastSeen: device.last_ping_at,
       location: device.current_location
@@ -595,6 +625,18 @@ export default function Dashboard() {
                       <div className="mt-2 flex items-center text-sm text-gray-500">
                         <Clock className="h-4 w-4 mr-1" />
                         Last seen {formatTimestamp(device.lastSeen)}
+                      </div>
+                    )}
+                    
+                    {/* Show location tester for personal devices without current location */}
+                    {device.type !== 'gps_tag' && !device.location && (
+                      <div className="mt-3">
+                        <LocationTester 
+                          deviceId={device.id}
+                          onLocationSent={() => {
+                            fetchPersonalDevices()
+                          }}
+                        />
                       </div>
                     )}
                   </div>

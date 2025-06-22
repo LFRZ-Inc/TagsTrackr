@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       device_model: device_model || 'Unknown',
       device_os: device_os || 'Unknown',
       is_active: true,
-      location_sharing_active: false,
+              location_sharing_enabled: false,
       sharing_enabled: true,
       privacy_mode: false,
       created_at: new Date().toISOString(),
@@ -231,7 +231,7 @@ export async function PATCH(request: NextRequest) {
     console.log('🔑 [API] Authenticated user:', user.email)
 
     const body = await request.json()
-    const { device_id, sharing_enabled, location_sharing_active, privacy_mode } = body
+    const { device_id, sharing_enabled, location_sharing_enabled, privacy_mode } = body
 
     if (!device_id) {
       return NextResponse.json({ error: 'Device ID is required' }, { status: 400 })
@@ -248,7 +248,7 @@ export async function PATCH(request: NextRequest) {
       .from('personal_devices')
       .update({
         sharing_enabled,
-        location_sharing_active,
+        location_sharing_enabled,
         privacy_mode,
         updated_at: new Date().toISOString()
       })

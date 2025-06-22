@@ -69,19 +69,20 @@ export async function POST(request: NextRequest) {
       refresh_token: '', // Not needed for this operation
     })
 
-    // Record location ping using stored function
-    const { data, error } = await supabaseAuth.rpc('record_location_ping', {
-      p_device_id: device_id,
-      p_latitude: latitude,
-      p_longitude: longitude,
-      p_accuracy: accuracy,
-      p_altitude: altitude,
-      p_speed: speed,
-      p_heading: heading,
-      p_location_source: source,
-      p_is_background_ping: is_background,
-      p_recorded_at: new Date().toISOString()
-    })
+    // Record location ping directly to location_pings table
+    const { data, error } = await supabaseAuth
+      .from('location_pings')
+      .insert({
+        device_id: device_id,
+        user_id: userData.user.id,
+        user_email: userData.user.email!,
+        latitude: latitude,
+        longitude: longitude,
+        accuracy: accuracy,
+        timestamp: new Date().toISOString()
+      })
+      .select()
+      .single()
 
     if (error) {
       console.error('❌ [API] Database error:', error)
@@ -157,16 +158,11 @@ export async function GET(request: NextRequest) {
         latitude,
         longitude,
         accuracy,
-        altitude,
-        speed,
-        heading,
-        location_source,
-        is_background,
-        recorded_at,
+        timestamp,
         created_at
       `)
       .eq('device_id', deviceId)
-      .order('recorded_at', { ascending: false })
+      .order('timestamp', { ascending: false })
       .limit(limit)
 
     if (error) throw error

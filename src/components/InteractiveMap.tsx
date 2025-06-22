@@ -49,7 +49,7 @@ interface Device {
   is_active: boolean | null
   battery_level: number | null
   last_seen_at: string | null
-  location_sharing_active?: boolean
+  location_sharing_enabled?: boolean
   current_location?: MapLocation
 }
 
