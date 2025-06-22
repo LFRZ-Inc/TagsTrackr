@@ -5,8 +5,11 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key'
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Create a single instance to avoid multiple client warnings
+const supabaseInstance = createClient(supabaseUrl, supabaseAnonKey)
+
+export const supabase = supabaseInstance
 
 export function createSupabaseClient() {
-  return createClient(supabaseUrl, supabaseAnonKey)
+  return supabaseInstance
 } 
