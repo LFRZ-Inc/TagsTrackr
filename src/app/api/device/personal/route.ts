@@ -1,48 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
 
-function createSupabaseClient() {
-  const cookieStore = cookies()
-  return createServerClient(
+function createSupabaseClient(request: NextRequest) {
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
+
+  const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
         get(name: string) {
-          return cookieStore.get(name)?.value
+          return request.cookies.get(name)?.value
         },
         set(name: string, value: string, options: any) {
-          try {
-            cookieStore.set({ name, value, ...options })
-          } catch {
-            // The `set` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
+          request.cookies.set({
+            name,
+            value,
+            ...options,
+          })
+          response.cookies.set({
+            name,
+            value,
+            ...options,
+          })
         },
         remove(name: string, options: any) {
-          try {
-            cookieStore.set({ name, value: '', ...options })
-          } catch {
-            // The `delete` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
+          request.cookies.set({
+            name,
+            value: '',
+            ...options,
+          })
+          response.cookies.set({
+            name,
+            value: '',
+            ...options,
+          })
         },
       },
     }
   )
+
+  return { supabase, response }
 }
 
 export async function POST(request: NextRequest) {
   try {
     console.log('🔍 [API] POST /api/device/personal - Starting request')
+    console.log('🍪 [API] Request cookies:', request.cookies.getAll().map(c => ({ name: c.name, value: c.value.substring(0, 20) + '...' })))
     
-    const supabase = createSupabaseClient()
+    const { supabase, response } = createSupabaseClient(request)
     console.log('🔧 [API] Supabase client created')
     
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -104,12 +117,19 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('✅ [API] Success! Returning response')
-    return NextResponse.json({
+    const successResponse = NextResponse.json({
       success: true,
       device_id: data.device_id,
       action: data.action,
       message: `${device_type} ${data.action === 'created_new' ? 'registered' : 'updated'} successfully`
     })
+    
+    // Copy cookies from the response object to ensure session is maintained
+    response.cookies.getAll().forEach(cookie => {
+      successResponse.cookies.set(cookie.name, cookie.value)
+    })
+    
+    return successResponse
 
   } catch (error) {
     console.error('❌ [API] Error registering personal device:', error)
@@ -122,7 +142,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createSupabaseClient()
+    const { supabase, response } = createSupabaseClient(request)
     const { data: { user } } = await supabase.auth.getUser()
     
     if (!user) {
@@ -179,7 +199,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = createSupabaseClient()
+    const { supabase, response } = createSupabaseClient(request)
     const { data: { user } } = await supabase.auth.getUser()
     
     if (!user) {
