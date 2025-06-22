@@ -12,12 +12,16 @@ const nextConfig = {
   // For Vercel deployment (current configuration)
   // Note: Server Actions are enabled by default in Next.js 14
   
-  // Webpack configuration fixes for bundling issues
+  // Aggressive webpack configuration fixes for bundling issues
   experimental: {
     esmExternals: false, // Disable ESM externals to prevent webpack async dependencies issues
+    forceSwcTransforms: false, // Disable SWC transforms that can cause bundling issues
   },
   
-  webpack: (config, { isServer }) => {
+  // Disable SWC minification which can cause "S is not a function" errors
+  swcMinify: false,
+  
+  webpack: (config, { isServer, webpack }) => {
     // Fix for client-side module resolution issues
     if (!isServer) {
       config.resolve.fallback = {
@@ -26,19 +30,62 @@ const nextConfig = {
         net: false,
         tls: false,
         crypto: false,
-      };
+        stream: false,
+        url: false,
+        zlib: false,
+        http: false,
+        https: false,
+        assert: false,
+        os: false,
+        path: false,
+      }
     }
-    
-    // Ensure proper alias resolution
+
+    // Fix for dynamic imports causing webpack bundling issues
+    config.module.rules.push({
+      test: /\.m?js$/,
+      resolve: {
+        fullySpecified: false,
+      },
+    })
+
+    // Prevent webpack from trying to parse certain files as ES modules
+    config.module.rules.push({
+      test: /\.js$/,
+      enforce: 'pre',
+      use: ['source-map-loader'],
+      exclude: [
+        /node_modules\/@next/,
+        /node_modules\/next/,
+      ],
+    })
+
+    // Fix for "You may need an appropriate loader" errors
     config.resolve.alias = {
       ...config.resolve.alias,
-    };
-    
-    return config;
+      'react/jsx-runtime': require.resolve('react/jsx-runtime'),
+      'react/jsx-dev-runtime': require.resolve('react/jsx-dev-runtime'),
+    }
+
+    // Ensure proper handling of dynamic imports
+    config.optimization = {
+      ...config.optimization,
+      splitChunks: {
+        ...config.optimization.splitChunks,
+        cacheGroups: {
+          ...config.optimization.splitChunks?.cacheGroups,
+          default: {
+            minChunks: 1,
+            priority: -20,
+            reuseExistingChunk: true,
+          },
+        },
+      },
+    }
+
+    // Important: return the modified config
+    return config
   },
-  
-  // Disable SWC minification to prevent terser issues
-  swcMinify: false,
 }
 
 module.exports = nextConfig 
