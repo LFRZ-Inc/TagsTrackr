@@ -36,14 +36,18 @@ interface PersonalDevice {
   }
 }
 
+// Device interface matching InteractiveMap expectations
 interface Device {
   id: string
-  name: string
+  tag_id: string
+  device_name: string
   device_type: string
-  description?: string
-  is_active: boolean
-  battery_level?: number
-  last_seen_at?: string
+  device_model?: string
+  description: string | null
+  is_active: boolean | null
+  battery_level: number | null
+  last_seen_at: string | null
+  location_sharing_enabled?: boolean
   current_location?: {
     latitude: number
     longitude: number
@@ -176,12 +180,15 @@ export default function Dashboard() {
   // Convert PersonalDevice to Device for InteractiveMap compatibility
   const convertToDevice = (device: PersonalDevice): Device => ({
     id: device.id,
-    name: device.device_name,
+    tag_id: device.id, // Use device id as tag_id for compatibility
+    device_name: device.device_name,
     device_type: device.device_type,
+    device_model: device.device_model,
     description: `${device.device_type} - ${device.device_model || 'Unknown model'}`,
     is_active: device.is_active && device.location_sharing_active,
-    battery_level: device.battery_level,
-    last_seen_at: device.last_ping_at,
+    battery_level: device.battery_level || null,
+    last_seen_at: device.last_ping_at || null,
+    location_sharing_enabled: device.location_sharing_active,
     current_location: device.current_location
   })
 
@@ -554,11 +561,16 @@ export default function Dashboard() {
 
         {/* Additional Components */}
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-white rounded-lg shadow-sm border">
-            <div className="p-6">
-              <LocationPinger />
+          {selectedDevice && (
+            <div className="bg-white rounded-lg shadow-sm border">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  Quick Location Update for {selectedDevice.device_name}
+                </h3>
+                <LocationPinger deviceId={selectedDevice.id} />
+              </div>
             </div>
-          </div>
+          )}
           
           <div className="bg-white rounded-lg shadow-sm border">
             <div className="p-6">

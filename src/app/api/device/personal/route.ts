@@ -4,23 +4,34 @@ import { createClient } from '@supabase/supabase-js'
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
 
-// Create client for auth verification
-const supabaseAuth = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+// Create client for auth verification - handle missing env vars during build
+const getSupabaseAuthClient = () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  
+  if (!url || !key) {
+    throw new Error('Missing Supabase environment variables')
+  }
+  
+  return createClient(url, key)
+}
 
 // Create admin client that bypasses RLS
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+const getSupabaseAdminClient = () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  
+  if (!url || !serviceKey) {
+    throw new Error('Missing Supabase environment variables')
+  }
+  
+  return createClient(url, serviceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
     }
-    }
-  )
+  })
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,6 +46,10 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
+
+    // Get Supabase clients
+    const supabaseAuth = getSupabaseAuthClient()
+    const supabaseAdmin = getSupabaseAdminClient()
 
     // Extract token
     const token = authHeader.replace('Bearer ', '')
@@ -161,6 +176,10 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Get Supabase clients
+    const supabaseAuth = getSupabaseAuthClient()
+    const supabaseAdmin = getSupabaseAdminClient()
+
     // Extract token
     const token = authHeader.replace('Bearer ', '')
     
@@ -217,6 +236,10 @@ export async function PATCH(request: NextRequest) {
       console.error('❌ [API] No Authorization header provided')
       return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
     }
+    
+    // Get Supabase clients
+    const supabaseAuth = getSupabaseAuthClient()
+    const supabaseAdmin = getSupabaseAdminClient()
     
     // Verify the JWT token
     const token = authHeader.substring(7)

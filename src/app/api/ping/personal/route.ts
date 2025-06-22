@@ -4,11 +4,17 @@ import { createClient } from '@supabase/supabase-js'
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
 
-// Create client for auth verification
-const supabaseAuth = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+// Create client for auth verification - handle missing env vars during build
+const getSupabaseClient = () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  
+  if (!url || !key) {
+    throw new Error('Missing Supabase environment variables')
+  }
+  
+  return createClient(url, key)
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,6 +26,9 @@ export async function POST(request: NextRequest) {
       console.error('❌ [API] No valid authorization header')
       return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
     }
+
+    // Get Supabase client
+    const supabaseAuth = getSupabaseClient()
 
     // Verify the JWT token
     const token = authHeader.substring(7)
@@ -141,6 +150,9 @@ export async function GET(request: NextRequest) {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
     }
+
+    // Get Supabase client
+    const supabaseAuth = getSupabaseClient()
 
     // Verify the JWT token
     const token = authHeader.substring(7)
