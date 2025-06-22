@@ -1,54 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
 
-function createSupabaseClient(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-        },
-        remove(name: string, options: any) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-        },
-      },
+// Create admin client for database operations (fallback to anon key if service role not available)
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
     }
-  )
+  }
+)
 
-  return { supabase, response }
-}
+// Create regular client for auth verification
+const supabaseAuth = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 export async function POST(request: NextRequest) {
   try {
@@ -62,28 +34,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
     }
     
-    const { supabase, response } = createSupabaseClient(request)
-    console.log('🔧 [API] Supabase client created')
-    
-    // Set the session from Authorization header
+    // Verify the JWT token
     const token = authHeader.substring(7)
-    const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-      access_token: token,
-      refresh_token: '' // We don't need refresh token for this operation
-    })
+    const { data: userData, error: userError } = await supabaseAuth.auth.getUser(token)
     
-    if (sessionError) {
-      console.error('❌ [API] Session error:', sessionError)
+    if (userError || !userData.user) {
+      console.error('❌ [API] Invalid token:', userError)
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
     
-    console.log('🔑 [API] Session set successfully, user:', sessionData.user?.email)
-    
-    const user = sessionData.user
-    if (!user) {
-      console.error('❌ [API] No user in session data')
-      return NextResponse.json({ error: 'Invalid user session' }, { status: 401 })
-    }
+    const user = userData.user
+    console.log('🔑 [API] Authenticated user:', user.email)
 
     const body = await request.json()
     console.log('📥 [API] Request body:', body)
@@ -108,23 +69,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Hardware fingerprint is required' }, { status: 400 })
     }
 
-    console.log('📱 [API] Calling register_personal_device function...')
+    console.log('📱 [API] Processing device registration...')
     
-    // Instead of using the stored function, let's do direct database operations
-    // First check if device with same hardware fingerprint already exists for this user
-    const { data: existingDevices, error: checkError } = await supabase
+    // Set the session on the admin client to ensure RLS works properly
+    await supabaseAdmin.auth.setSession({
+      access_token: token,
+      refresh_token: ''
+    })
+    
+    // Check for existing device
+    const { data: existingDevices, error: checkError } = await supabaseAdmin
       .from('personal_devices')
       .select('id, device_name')
       .eq('user_id', user.id)
       .eq('hardware_fingerprint', hardware_fingerprint)
       .eq('is_active', true)
-      .limit(1)
 
     console.log('🔍 [API] Existing device check:', { existingDevices, checkError })
 
     if (checkError) {
       console.error('❌ [API] Check error:', checkError)
-      throw checkError
+      return NextResponse.json({ error: 'Database error during device check' }, { status: 500 })
     }
 
     const existingDevice = existingDevices && existingDevices.length > 0 ? existingDevices[0] : null
@@ -133,7 +98,7 @@ export async function POST(request: NextRequest) {
     if (existingDevice) {
       // Update existing device
       console.log('📝 [API] Updating existing device:', existingDevice.id)
-      const { data: updatedDevice, error: updateError } = await supabase
+      const { data: updatedDevice, error: updateError } = await supabaseAdmin
         .from('personal_devices')
         .update({
           device_name: device_name,
@@ -143,13 +108,12 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString()
         })
         .eq('id', existingDevice.id)
-        .eq('user_id', user.id)
         .select('id')
         .single()
 
       if (updateError) {
         console.error('❌ [API] Update error:', updateError)
-        throw updateError
+        return NextResponse.json({ error: 'Failed to update device' }, { status: 500 })
       }
 
       deviceResult = {
@@ -159,7 +123,7 @@ export async function POST(request: NextRequest) {
     } else {
       // Create new device
       console.log('➕ [API] Creating new device')
-      const { data: newDevice, error: insertError } = await supabase
+      const { data: newDevice, error: insertError } = await supabaseAdmin
         .from('personal_devices')
         .insert({
           user_id: user.id,
@@ -179,17 +143,25 @@ export async function POST(request: NextRequest) {
 
       if (insertError) {
         console.error('❌ [API] Insert error:', insertError)
-        throw insertError
+        return NextResponse.json({ error: 'Failed to create device' }, { status: 500 })
       }
 
       // Create default privacy settings if they don't exist
-      const { error: privacyError } = await supabase
+      const { error: privacyError } = await supabaseAdmin
         .from('privacy_settings')
-        .insert({ user_id: user.id })
-        .select()
-        .maybeSingle()
+        .upsert({ 
+          user_id: user.id,
+          location_sharing_enabled: false,
+          home_privacy_enabled: true,
+          data_retention_days: 7,
+          share_with_emergency_contacts: false,
+          anonymous_crash_detection: true,
+          background_location_enabled: false
+        }, {
+          onConflict: 'user_id'
+        })
 
-      if (privacyError && !privacyError.message.includes('duplicate key')) {
+      if (privacyError) {
         console.log('⚠️ [API] Privacy settings error (non-critical):', privacyError)
       }
 
@@ -199,19 +171,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('📤 [API] Device operation result:', deviceResult)
-
+    console.log('✅ [API] Device operation successful:', deviceResult)
+    
     return NextResponse.json({
       success: true,
+      message: deviceResult.action === 'created_new' ? 'Device registered successfully' : 'Device updated successfully',
       device_id: deviceResult.device_id,
-      action: deviceResult.action,
-      message: `${device_type} ${deviceResult.action === 'created_new' ? 'registered' : 'updated'} successfully`
+      action: deviceResult.action
     })
 
   } catch (error) {
-    console.error('❌ [API] Error registering personal device:', error)
+    console.error('💥 [API] Unexpected error:', error)
     return NextResponse.json(
-      { error: 'Failed to register device' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -219,29 +191,34 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    console.log('🔍 [API] GET /api/device/personal - Starting request')
+    
     const authHeader = request.headers.get('authorization')
-    const { supabase, response } = createSupabaseClient(request)
-    
-    // If we have an Authorization header, set the session manually
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7)
-      await supabase.auth.setSession({
-        access_token: token,
-        refresh_token: ''
-      })
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('❌ [API] No Authorization header provided')
+      return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
     }
     
-    const { data: { user } } = await supabase.auth.getUser()
+    // Verify the JWT token
+    const token = authHeader.substring(7)
+    const { data: userData, error: userError } = await supabaseAuth.auth.getUser(token)
     
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (userError || !userData.user) {
+      console.error('❌ [API] Invalid token:', userError)
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
+    
+    const user = userData.user
+    console.log('🔑 [API] Authenticated user:', user.email)
 
-    const url = new URL(request.url)
-    const currentOnly = url.searchParams.get('current_only') === 'true'
-    const hardwareFingerprint = url.searchParams.get('hardware_fingerprint')
+    // Set the session on the admin client
+    await supabaseAdmin.auth.setSession({
+      access_token: token,
+      refresh_token: ''
+    })
 
-    let query = supabase
+    // Get user's devices
+    const { data: devices, error } = await supabaseAdmin
       .from('personal_devices')
       .select(`
         id,
@@ -251,35 +228,33 @@ export async function GET(request: NextRequest) {
         device_os,
         sharing_enabled,
         location_sharing_active,
-        is_active,
-        battery_level,
+        privacy_mode,
         last_ping_at,
+        battery_level,
+        is_active,
         created_at,
-        hardware_fingerprint,
-        privacy_mode
+        updated_at
       `)
       .eq('user_id', user.id)
       .eq('is_active', true)
+      .order('created_at', { ascending: false })
 
-    // Filter for current device only if requested
-    if (currentOnly && hardwareFingerprint) {
-      query = query.eq('hardware_fingerprint', hardwareFingerprint)
+    if (error) {
+      console.error('❌ [API] Database error:', error)
+      return NextResponse.json({ error: 'Failed to fetch devices' }, { status: 500 })
     }
 
-    const { data: devices, error } = await query.order('created_at', { ascending: false })
-
-    if (error) throw error
-
+    console.log('✅ [API] Found devices:', devices?.length || 0)
+    
     return NextResponse.json({
       success: true,
-      devices: devices || [],
-      current_device: currentOnly ? (devices?.[0] || null) : null
+      devices: devices || []
     })
 
   } catch (error) {
-    console.error('Error fetching personal devices:', error)
+    console.error('💥 [API] Unexpected error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch devices' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -287,66 +262,73 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    console.log('🔍 [API] PATCH /api/device/personal - Starting request')
+    
     const authHeader = request.headers.get('authorization')
-    const { supabase, response } = createSupabaseClient(request)
-    
-    // If we have an Authorization header, set the session manually
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7)
-      await supabase.auth.setSession({
-        access_token: token,
-        refresh_token: ''
-      })
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('❌ [API] No Authorization header provided')
+      return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
     }
     
-    const { data: { user } } = await supabase.auth.getUser()
+    // Verify the JWT token
+    const token = authHeader.substring(7)
+    const { data: userData, error: userError } = await supabaseAuth.auth.getUser(token)
     
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (userError || !userData.user) {
+      console.error('❌ [API] Invalid token:', userError)
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
+    
+    const user = userData.user
+    console.log('🔑 [API] Authenticated user:', user.email)
 
     const body = await request.json()
-    const { device_id, location_sharing_active, privacy_mode } = body
+    const { device_id, sharing_enabled, location_sharing_active, privacy_mode } = body
 
-    // Verify user owns this device
-    const { data: device, error: deviceError } = await supabase
-      .from('personal_devices')
-      .select('user_id')
-      .eq('id', device_id)
-      .single()
-
-    if (deviceError || device?.user_id !== user.id) {
-      return NextResponse.json({ error: 'Device not found or access denied' }, { status: 403 })
+    if (!device_id) {
+      return NextResponse.json({ error: 'Device ID is required' }, { status: 400 })
     }
+
+    // Set the session on the admin client
+    await supabaseAdmin.auth.setSession({
+      access_token: token,
+      refresh_token: ''
+    })
 
     // Update device settings
-    const updateData: any = {}
-    if (location_sharing_active !== undefined) {
-      updateData.location_sharing_active = location_sharing_active
-    }
-    if (privacy_mode !== undefined) {
-      updateData.privacy_mode = privacy_mode
-    }
-
-    const { data: updatedDevice, error } = await supabase
+    const { data: updatedDevice, error } = await supabaseAdmin
       .from('personal_devices')
-      .update(updateData)
+      .update({
+        sharing_enabled,
+        location_sharing_active,
+        privacy_mode,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', device_id)
-      .eq('user_id', user.id)
-      .select()
+      .eq('user_id', user.id) // Ensure user owns this device
+      .select('id')
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error('❌ [API] Update error:', error)
+      return NextResponse.json({ error: 'Failed to update device settings' }, { status: 500 })
+    }
 
+    if (!updatedDevice) {
+      return NextResponse.json({ error: 'Device not found or access denied' }, { status: 404 })
+    }
+
+    console.log('✅ [API] Device settings updated successfully')
+    
     return NextResponse.json({
       success: true,
-      device: updatedDevice
+      message: 'Device settings updated successfully'
     })
 
   } catch (error) {
-    console.error('Error updating device:', error)
+    console.error('💥 [API] Unexpected error:', error)
     return NextResponse.json(
-      { error: 'Failed to update device' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
