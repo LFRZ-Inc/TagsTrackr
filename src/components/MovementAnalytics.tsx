@@ -271,7 +271,7 @@ export default function MovementAnalytics() {
               onChange={(e) => setSelectedDevice(e.target.value)}
               className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {devices.map((device) => (
+              {(devices || []).map((device) => (
                 <option key={device.id} value={device.id}>
                   {device.device_name} ({device.device_type})
                 </option>
@@ -415,7 +415,7 @@ export default function MovementAnalytics() {
               </div>
             ) : (
               <div className="space-y-3">
-                {movementSessions.map((session) => (
+                {(movementSessions || []).map((session) => (
                   <div key={session.id} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
@@ -458,7 +458,7 @@ export default function MovementAnalytics() {
               </div>
             ) : (
               <div className="space-y-3">
-                {locationInsights.map((location, index) => (
+                {(locationInsights || []).map((location, index) => (
                   <div key={index} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex items-center justify-between">
                       <div>
@@ -501,7 +501,7 @@ export default function MovementAnalytics() {
               </div>
             ) : (
               <div className="space-y-3">
-                {dailyActivity.map((day) => (
+                {(dailyActivity || []).map((day) => (
                   <div key={day.date} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex items-center justify-between">
                       <div>

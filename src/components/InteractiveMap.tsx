@@ -358,7 +358,7 @@ export default function InteractiveMap({
         />
 
         {/* Render device markers */}
-        {devices.map((device) => {
+        {(devices || []).map((device) => {
           if (!device.current_location?.latitude || !device.current_location?.longitude) return null
           
           const isSelected = selectedDevice?.id === device.id
@@ -453,7 +453,7 @@ export default function InteractiveMap({
         {/* Render route if enabled */}
         {showRoute && locationHistory.length > 1 && (
           <Polyline
-            positions={locationHistory.map(loc => [loc.latitude, loc.longitude])}
+            positions={(locationHistory || []).map(loc => [loc.latitude, loc.longitude])}
             color="blue"
             weight={3}
             opacity={0.7}
@@ -461,7 +461,7 @@ export default function InteractiveMap({
         )}
 
         {/* Render geofences */}
-        {geofences.map((geofence) => (
+        {(geofences || []).map((geofence) => (
           <Circle
             key={geofence.id}
             center={geofence.center}
