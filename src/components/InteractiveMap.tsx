@@ -362,7 +362,7 @@ export default function InteractiveMap({
           if (!device.current_location?.latitude || !device.current_location?.longitude) return null
           
           const isSelected = selectedDevice?.id === device.id
-          const icon = customIcon ? customIcon(device.device_type, isSelected) : undefined
+          const icon = (customIcon && typeof customIcon === 'function') ? customIcon(device.device_type, isSelected) : undefined
           const position: [number, number] = [device.current_location.latitude, device.current_location.longitude]
           const accuracy = device.current_location.accuracy || 0
 

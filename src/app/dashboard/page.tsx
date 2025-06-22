@@ -175,7 +175,9 @@ export default function Dashboard() {
   // Convert PersonalDevice to Device for InteractiveMap compatibility
   const convertToDevice = (device: PersonalDevice): any => ({
     ...device,
-    is_active: device.location_sharing_active
+    is_active: device.location_sharing_active,
+    description: device.description || '',
+    last_seen_at: device.last_ping_at || device.last_seen_at
   })
 
   const filteredDevices = devices.filter(device =>
