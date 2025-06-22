@@ -358,7 +358,7 @@ export default function InteractiveMap({
         />
 
         {/* Render device markers */}
-        {(devices || []).map((device) => {
+        {leafletLoaded && (devices || []).map((device) => {
           if (!device.current_location?.latitude || !device.current_location?.longitude) return null
           
           const isSelected = selectedDevice?.id === device.id
@@ -381,13 +381,14 @@ export default function InteractiveMap({
               )}
 
               {/* Device Marker */}
-            <Marker
+            {icon && (
+              <Marker
                 position={position}
-              icon={icon}
-              eventHandlers={{
+                icon={icon}
+                eventHandlers={{
                   click: () => onDeviceSelect?.(device)
-              }}
-            >
+                }}
+              >
               <Popup>
                   <div className="p-3 min-w-[250px]">
                     <div className="flex items-center gap-2 mb-3">
@@ -446,6 +447,7 @@ export default function InteractiveMap({
                 </div>
               </Popup>
             </Marker>
+            )}
             </div>
           )
         })}
