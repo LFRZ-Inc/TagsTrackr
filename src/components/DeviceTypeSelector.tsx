@@ -215,100 +215,197 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
   }, [isOpen]);
 
   const handleAddDevice = async () => {
-    console.log('🔍 Attempting to add device...')
-    console.log('User:', user?.email || 'No user')
-    
     if (!user) {
-      console.error('❌ No user provided to DeviceTypeSelector')
-      setError('Please log in to add devices. Try refreshing the page.');
+      setError('Please log in to add devices');
       return;
     }
 
-    if (!selectedType || !deviceName.trim()) {
-      console.error('❌ Missing device type or name')
-      setError('Please select a device type and enter a name');
+    if (!selectedType) {
+      setError('Please select a device type');
       return;
     }
 
-    console.log('📱 Adding device:', { selectedType, deviceName, user: user.email })
+    if (!deviceName.trim()) {
+      setError('Please enter a device name');
+      return;
+    }
+
     setLoading(true);
     setError('');
-    
+
     try {
-      // Get the current session and access token
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      // Get user's access token for API authentication
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError || !session?.access_token) {
-        console.error('❌ Failed to get access token:', sessionError)
-        setError('Authentication failed. Please log out and log back in.');
-        return;
+        throw new Error('Authentication session not found');
+      }
+
+      const deviceInfo = getDeviceInfo();
+      if (!deviceInfo) {
+        throw new Error('Device type not found');
       }
       
-      console.log('🔑 Got access token:', session.access_token.substring(0, 20) + '...')
-      
-      // Generate hardware fingerprint for device identification
-      const hardwareFingerprint = generateHardwareFingerprint();
-      console.log('🔑 Hardware fingerprint:', hardwareFingerprint)
-      
-      const requestBody = {
+      const deviceData = {
         device_type: selectedType,
         device_name: deviceName.trim(),
         device_model: deviceModel.trim() || undefined,
         device_os: deviceOS.trim() || undefined,
-        hardware_fingerprint: hardwareFingerprint,
-        is_current_device: true // Mark this as the current browser/device
-      }
-      
-      console.log('📤 Sending request to /api/device/personal:', requestBody)
-      
+        hardware_fingerprint: generateHardwareFingerprint(),
+        browser_fingerprint: generateBrowserFingerprint(),
+        user_agent: navigator.userAgent,
+        screen_resolution: `${screen.width}x${screen.height}`,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        language: navigator.language,
+        location_sharing_enabled: true, // Enable location sharing by default
+        privacy_mode: false
+      };
+
+      console.log('🔍 [DeviceTypeSelector] Adding device:', deviceData);
+
       const response = await fetch('/api/device/personal', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        credentials: 'include',
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(deviceData)
       });
 
-      console.log('📥 Response status:', response.status)
-      const data = await response.json();
-      console.log('📥 Response data:', data)
-      
-      if (response.ok) {
-        console.log('✅ Device added successfully!')
-        // Store the device ID in localStorage for this browser
-        localStorage.setItem('tagstrackr_current_device_id', data.device_id);
-        localStorage.setItem('tagstrackr_device_hardware_fingerprint', hardwareFingerprint);
-        
-        // Success - close modal and reset form
-        setIsOpen(false);
-        setSelectedType('');
-        setDeviceName('');
-        setDeviceModel('');
-        setDeviceOS('');
-        setError('');
-        onDeviceAdded();
-        
-        // Show appropriate success message
-        if (data.existing) {
-          alert(`✅ Device Found!\n\n${data.message}\n\nYou can now enable location sharing from the dashboard.`);
-        } else {
-          alert(`✅ ${deviceName} has been registered as your current device!\n\nYou can now enable location sharing from the dashboard to track this device.`);
-        }
-      } else {
-        console.error('❌ API request failed:', response.status, data)
-        if (response.status === 401) {
-          setError('Authentication failed. Please log out and log back in.');
-        } else {
-          setError(data.error || 'Failed to add device. Please try again.');
-        }
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
+
+      const result = await response.json();
+      console.log('✅ [DeviceTypeSelector] Device added successfully:', result);
+
+      // Start automatic location tracking and pinging
+      await startLocationTracking(result.device.id);
+
+      alert(`✅ ${deviceName.trim()} has been registered as your current device! Location tracking has been automatically enabled.`);
+      
+      setIsOpen(false);
+      onDeviceAdded();
+      
+      // Reset form
+      setSelectedType('');
+      setDeviceName('');
+      setDeviceModel('');
+      setDeviceOS('');
+      setAutoDetected(null);
+      
     } catch (error) {
-      console.error('❌ Network error adding device:', error);
-      setError('Network error. Please check your connection and try again.');
+      console.error('❌ [DeviceTypeSelector] Error adding device:', error);
+      setError(`Failed to create device: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // New function to start location tracking automatically
+  const startLocationTracking = async (deviceId: string) => {
+    try {
+      console.log('🎯 [DeviceTypeSelector] Starting location tracking for device:', deviceId);
+      
+      // Check if geolocation is supported
+      if (!navigator.geolocation) {
+        console.warn('Geolocation not supported');
+        return;
+      }
+
+      // Request location permission
+      const permission = await new Promise<boolean>((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          () => resolve(true),
+          () => resolve(false),
+          { timeout: 5000 }
+        );
+      });
+
+      if (!permission) {
+        console.warn('Location permission denied');
+        return;
+      }
+
+      // Send initial ping to mark device as online
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) return;
+
+            const pingData = {
+              device_id: deviceId,
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              altitude: position.coords.altitude,
+              speed: position.coords.speed,
+              heading: position.coords.heading,
+              source: 'browser_geolocation',
+              is_background: false
+            };
+
+            const response = await fetch('/api/ping/personal', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify(pingData)
+            });
+
+            if (response.ok) {
+              console.log('✅ [DeviceTypeSelector] Initial location ping sent successfully');
+              
+              // Start periodic pinging every 30 seconds
+              setInterval(async () => {
+                navigator.geolocation.getCurrentPosition(
+                  async (pos) => {
+                    try {
+                      const { data: { session } } = await supabase.auth.getSession();
+                      if (!session?.access_token) return;
+
+                      const pingData = {
+                        device_id: deviceId,
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude,
+                        accuracy: pos.coords.accuracy,
+                        altitude: pos.coords.altitude,
+                        speed: pos.coords.speed,
+                        heading: pos.coords.heading,
+                        source: 'browser_geolocation',
+                        is_background: true
+                      };
+
+                      await fetch('/api/ping/personal', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${session.access_token}`
+                        },
+                        body: JSON.stringify(pingData)
+                      });
+                    } catch (error) {
+                      console.error('Background ping failed:', error);
+                    }
+                  },
+                  (error) => console.error('Background location error:', error),
+                  { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+                );
+              }, 30000); // 30 seconds
+            }
+          } catch (error) {
+            console.error('Failed to send initial ping:', error);
+          }
+        },
+        (error) => console.error('Failed to get initial location:', error),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+      
+    } catch (error) {
+      console.error('Failed to start location tracking:', error);
     }
   };
 

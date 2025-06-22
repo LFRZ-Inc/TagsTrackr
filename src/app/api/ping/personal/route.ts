@@ -1,51 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createClient } from '@supabase/supabase-js'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
 
-function createSupabaseClient() {
-  const cookieStore = cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          try {
-            cookieStore.set({ name, value, ...options })
-          } catch {
-            // The `set` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-        remove(name: string, options: any) {
-          try {
-            cookieStore.set({ name, value: '', ...options })
-          } catch {
-            // The `delete` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-      },
-    }
-  )
-}
+// Create client for auth verification
+const supabaseAuth = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    console.log('🎯 [API] POST /api/ping/personal - Processing location ping')
     
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Get Authorization header
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('❌ [API] No valid authorization header')
+      return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
     }
+
+    // Verify the JWT token
+    const token = authHeader.substring(7)
+    const { data: userData, error: userError } = await supabaseAuth.auth.getUser(token)
+
+    if (userError || !userData.user) {
+      console.error('❌ [API] Auth failed:', userError)
+      return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
+    }
+
+    console.log('✅ [API] User authenticated:', userData.user.email)
 
     const body = await request.json()
     const {
@@ -60,8 +45,10 @@ export async function POST(request: NextRequest) {
       is_background = false
     } = body
 
+    console.log('📍 [API] Ping data:', { device_id, latitude, longitude, accuracy, source, is_background })
+
     // Validate required fields
-    if (!device_id || !latitude || !longitude) {
+    if (!device_id || latitude === undefined || longitude === undefined) {
       return NextResponse.json(
         { error: 'Missing required fields: device_id, latitude, longitude' },
         { status: 400 }
@@ -76,8 +63,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Set session for RLS
+    await supabaseAuth.auth.setSession({
+      access_token: token,
+      refresh_token: '', // Not needed for this operation
+    })
+
     // Record location ping using stored function
-    const { data, error } = await supabase.rpc('record_location_ping', {
+    const { data, error } = await supabaseAuth.rpc('record_location_ping', {
       p_device_id: device_id,
       p_latitude: latitude,
       p_longitude: longitude,
@@ -86,22 +79,28 @@ export async function POST(request: NextRequest) {
       p_speed: speed,
       p_heading: heading,
       p_location_source: source,
-      p_is_background_ping: is_background
+      p_is_background_ping: is_background,
+      p_recorded_at: new Date().toISOString()
     })
 
     if (error) {
-      console.error('Database error:', error)
-      throw error
+      console.error('❌ [API] Database error:', error)
+      return NextResponse.json(
+        { error: 'Failed to record location ping: ' + error.message },
+        { status: 500 }
+      )
     }
+
+    console.log('✅ [API] Location ping recorded successfully:', data)
 
     return NextResponse.json({
       success: true,
-      ping_id: data,
+      result: data,
       message: 'Location recorded successfully'
     })
 
   } catch (error) {
-    console.error('Error processing location ping:', error)
+    console.error('❌ [API] Error processing location ping:', error)
     return NextResponse.json(
       { error: 'Failed to process location ping' },
       { status: 500 }
@@ -111,11 +110,18 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Get Authorization header
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
+    }
+
+    // Verify the JWT token
+    const token = authHeader.substring(7)
+    const { data: userData, error: userError } = await supabaseAuth.auth.getUser(token)
+
+    if (userError || !userData.user) {
+      return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
     }
 
     const url = new URL(request.url)
@@ -126,19 +132,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'device_id required' }, { status: 400 })
     }
 
+    // Set session for RLS
+    await supabaseAuth.auth.setSession({
+      access_token: token,
+      refresh_token: '',
+    })
+
     // Verify user owns this device first
-    const { data: device, error: deviceError } = await supabase
+    const { data: device, error: deviceError } = await supabaseAuth
       .from('personal_devices')
       .select('user_id')
       .eq('id', deviceId)
       .single()
 
-    if (deviceError || device?.user_id !== user.id) {
+    if (deviceError || device?.user_id !== userData.user.id) {
       return NextResponse.json({ error: 'Device not found or access denied' }, { status: 403 })
     }
 
     // Get recent location history for device
-    const { data: locations, error } = await supabase
+    const { data: locations, error } = await supabaseAuth
       .from('location_pings')
       .select(`
         id,
