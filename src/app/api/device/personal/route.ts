@@ -112,16 +112,22 @@ export async function POST(request: NextRequest) {
     
     // Instead of using the stored function, let's do direct database operations
     // First check if device with same hardware fingerprint already exists for this user
-    const { data: existingDevice, error: checkError } = await supabase
+    const { data: existingDevices, error: checkError } = await supabase
       .from('personal_devices')
       .select('id, device_name')
       .eq('user_id', user.id)
       .eq('hardware_fingerprint', hardware_fingerprint)
       .eq('is_active', true)
-      .single()
+      .limit(1)
 
-    console.log('🔍 [API] Existing device check:', { existingDevice, checkError })
+    console.log('🔍 [API] Existing device check:', { existingDevices, checkError })
 
+    if (checkError) {
+      console.error('❌ [API] Check error:', checkError)
+      throw checkError
+    }
+
+    const existingDevice = existingDevices && existingDevices.length > 0 ? existingDevices[0] : null
     let deviceResult;
     
     if (existingDevice) {
@@ -179,9 +185,11 @@ export async function POST(request: NextRequest) {
       // Create default privacy settings if they don't exist
       const { error: privacyError } = await supabase
         .from('privacy_settings')
-        .upsert({ user_id: user.id }, { onConflict: 'user_id' })
+        .insert({ user_id: user.id })
+        .select()
+        .maybeSingle()
 
-      if (privacyError) {
+      if (privacyError && !privacyError.message.includes('duplicate key')) {
         console.log('⚠️ [API] Privacy settings error (non-critical):', privacyError)
       }
 
