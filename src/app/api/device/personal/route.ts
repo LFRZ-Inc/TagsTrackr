@@ -53,40 +53,36 @@ function createSupabaseClient(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     console.log('🔍 [API] POST /api/device/personal - Starting request')
-    console.log('🍪 [API] Request cookies:', request.cookies.getAll().map(c => ({ name: c.name, value: c.value.substring(0, 20) + '...' })))
     
     const authHeader = request.headers.get('authorization')
     console.log('🔐 [API] Authorization header:', authHeader ? 'Bearer ' + authHeader.substring(7, 27) + '...' : 'None')
     
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('❌ [API] No Authorization header provided')
+      return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
+    }
+    
     const { supabase, response } = createSupabaseClient(request)
     console.log('🔧 [API] Supabase client created')
     
-    // If we have an Authorization header, set the session manually
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7)
-      await supabase.auth.setSession({
-        access_token: token,
-        refresh_token: '' // We don't need refresh token for this operation
-      })
-      console.log('🔑 [API] Set session from Authorization header')
-    }
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    console.log('🔐 [API] Auth check result:', { 
-      hasUser: !!user, 
-      userId: user?.id, 
-      userEmail: user?.email,
-      authError: authError?.message 
+    // Set the session from Authorization header
+    const token = authHeader.substring(7)
+    const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+      access_token: token,
+      refresh_token: '' // We don't need refresh token for this operation
     })
     
-    if (authError) {
-      console.error('❌ [API] Auth error:', authError)
-      return NextResponse.json({ error: 'Authentication error: ' + authError.message }, { status: 401 })
+    if (sessionError) {
+      console.error('❌ [API] Session error:', sessionError)
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
     
+    console.log('🔑 [API] Session set successfully, user:', sessionData.user?.email)
+    
+    const user = sessionData.user
     if (!user) {
-      console.error('❌ [API] No user found in session')
-      return NextResponse.json({ error: 'Please log in to add devices' }, { status: 401 })
+      console.error('❌ [API] No user in session data')
+      return NextResponse.json({ error: 'Invalid user session' }, { status: 401 })
     }
 
     const body = await request.json()
@@ -113,36 +109,96 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('📱 [API] Calling register_personal_device function...')
-    // Register personal device using stored function
-    const { data, error } = await supabase.rpc('register_personal_device', {
-      p_device_type: device_type,
-      p_device_name: device_name,
-      p_hardware_fingerprint: hardware_fingerprint,
-      p_device_model: device_model,
-      p_device_os: device_os
-    })
+    
+    // Instead of using the stored function, let's do direct database operations
+    // First check if device with same hardware fingerprint already exists for this user
+    const { data: existingDevice, error: checkError } = await supabase
+      .from('personal_devices')
+      .select('id, device_name')
+      .eq('user_id', user.id)
+      .eq('hardware_fingerprint', hardware_fingerprint)
+      .eq('is_active', true)
+      .single()
 
-    console.log('📤 [API] Function result:', { data, error })
+    console.log('🔍 [API] Existing device check:', { existingDevice, checkError })
 
-    if (error) {
-      console.error('❌ [API] Database error:', error)
-      throw error
+    let deviceResult;
+    
+    if (existingDevice) {
+      // Update existing device
+      console.log('📝 [API] Updating existing device:', existingDevice.id)
+      const { data: updatedDevice, error: updateError } = await supabase
+        .from('personal_devices')
+        .update({
+          device_name: device_name,
+          device_model: device_model,
+          device_os: device_os,
+          last_ping_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingDevice.id)
+        .eq('user_id', user.id)
+        .select('id')
+        .single()
+
+      if (updateError) {
+        console.error('❌ [API] Update error:', updateError)
+        throw updateError
+      }
+
+      deviceResult = {
+        device_id: updatedDevice.id,
+        action: 'updated_existing'
+      }
+    } else {
+      // Create new device
+      console.log('➕ [API] Creating new device')
+      const { data: newDevice, error: insertError } = await supabase
+        .from('personal_devices')
+        .insert({
+          user_id: user.id,
+          device_type: device_type,
+          device_name: device_name,
+          hardware_fingerprint: hardware_fingerprint,
+          device_model: device_model,
+          device_os: device_os,
+          last_ping_at: new Date().toISOString(),
+          is_active: true,
+          location_sharing_active: false,
+          sharing_enabled: true,
+          privacy_mode: false
+        })
+        .select('id')
+        .single()
+
+      if (insertError) {
+        console.error('❌ [API] Insert error:', insertError)
+        throw insertError
+      }
+
+      // Create default privacy settings if they don't exist
+      const { error: privacyError } = await supabase
+        .from('privacy_settings')
+        .upsert({ user_id: user.id }, { onConflict: 'user_id' })
+
+      if (privacyError) {
+        console.log('⚠️ [API] Privacy settings error (non-critical):', privacyError)
+      }
+
+      deviceResult = {
+        device_id: newDevice.id,
+        action: 'created_new'
+      }
     }
 
-    console.log('✅ [API] Success! Returning response')
-    const successResponse = NextResponse.json({
+    console.log('📤 [API] Device operation result:', deviceResult)
+
+    return NextResponse.json({
       success: true,
-      device_id: data.device_id,
-      action: data.action,
-      message: `${device_type} ${data.action === 'created_new' ? 'registered' : 'updated'} successfully`
+      device_id: deviceResult.device_id,
+      action: deviceResult.action,
+      message: `${device_type} ${deviceResult.action === 'created_new' ? 'registered' : 'updated'} successfully`
     })
-    
-    // Copy cookies from the response object to ensure session is maintained
-    response.cookies.getAll().forEach(cookie => {
-      successResponse.cookies.set(cookie.name, cookie.value)
-    })
-    
-    return successResponse
 
   } catch (error) {
     console.error('❌ [API] Error registering personal device:', error)
