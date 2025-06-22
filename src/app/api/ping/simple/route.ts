@@ -2,24 +2,45 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-// Simple ping endpoint for location tracking
+// Simple ping endpoint for location tracking using user authentication
 
 export async function POST(request: NextRequest) {
   try {
     console.log('🎯 Simple ping endpoint called')
     
     // Check environment variables
-    if (!supabaseUrl || !supabaseServiceKey) {
+    if (!supabaseUrl || !supabaseAnonKey) {
       console.error('❌ Missing environment variables:', { 
         hasUrl: !!supabaseUrl, 
-        hasServiceKey: !!supabaseServiceKey 
+        hasAnonKey: !!supabaseAnonKey 
       })
       return NextResponse.json({ 
         error: 'Server configuration error' 
       }, { status: 500 })
     }
+
+    // Get Authorization header
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('❌ No valid authorization header')
+      return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
+    }
+
+    const token = authHeader.substring(7)
+    
+    // Create Supabase client with user token
+    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    
+    // Set the user session
+    const { data: userData, error: userError } = await supabase.auth.getUser(token)
+    if (userError || !userData.user) {
+      console.error('❌ Auth failed:', userError)
+      return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
+    }
+
+    console.log('✅ User authenticated:', userData.user.email)
 
     const body = await request.json()
     console.log('📍 Request body:', body)
@@ -32,10 +53,6 @@ export async function POST(request: NextRequest) {
         error: 'Missing required fields: device_id, latitude, longitude' 
       }, { status: 400 })
     }
-
-    // Use service role to bypass RLS
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
-    console.log('✅ Supabase client created')
 
     // Validate numeric values
     const lat = typeof latitude === 'number' ? latitude : parseFloat(latitude)
@@ -50,6 +67,12 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('📍 Updating device with location:', { device_id, lat, lng, acc })
+
+    // Set session for RLS
+    await supabase.auth.setSession({
+      access_token: token,
+      refresh_token: '', // Not needed for this operation
+    })
 
     // Update the device with location data and mark as active
     const { data, error } = await supabase
@@ -67,6 +90,7 @@ export async function POST(request: NextRequest) {
         }
       })
       .eq('id', device_id)
+      .eq('user_id', userData.user.id) // Ensure user owns this device
       .select()
       .single()
 
@@ -85,9 +109,9 @@ export async function POST(request: NextRequest) {
       message: 'Location updated successfully',
       device: data,
       location: {
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-        accuracy: parseFloat(accuracy)
+        latitude: lat,
+        longitude: lng,
+        accuracy: acc
       }
     })
 
@@ -109,12 +133,32 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'device_id is required' }, { status: 400 })
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    // Get Authorization header
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
+    }
+
+    const token = authHeader.substring(7)
+    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    
+    // Verify the JWT token
+    const { data: userData, error: userError } = await supabase.auth.getUser(token)
+    if (userError || !userData.user) {
+      return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
+    }
+
+    // Set session for RLS
+    await supabase.auth.setSession({
+      access_token: token,
+      refresh_token: '',
+    })
 
     const { data, error } = await supabase
       .from('personal_devices')
       .select('*')
       .eq('id', device_id)
+      .eq('user_id', userData.user.id)
       .single()
 
     if (error) {

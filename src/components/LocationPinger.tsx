@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { MapPin, Loader2, CheckCircle, AlertCircle, Navigation, RefreshCw } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 interface LocationPingerProps {
   deviceId: string
@@ -135,10 +136,18 @@ export default function LocationPinger({
     setMessage('Sending location to server...')
 
     try {
+      // Get the current user session
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('Not authenticated')
+      }
+
       const response = await fetch('/api/ping/simple', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({
           device_id: deviceId,
