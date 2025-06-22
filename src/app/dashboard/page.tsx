@@ -47,7 +47,7 @@ interface Tag {
   description: string | null
   is_active: boolean | null
   battery_level: number | null
-  last_ping_at: string | null
+  last_seen_at: string | null
   current_location?: {
     latitude: number
     longitude: number
@@ -149,7 +149,7 @@ export default function Dashboard() {
     setRefreshing(true)
     try {
       const { data, error } = await supabase
-        .from('gps_tags')
+        .from('tags')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
@@ -253,7 +253,7 @@ export default function Dashboard() {
         { 
           event: '*', 
           schema: 'public', 
-          table: 'gps_tags',
+          table: 'tags',
           filter: `user_id=eq.${user.id}`
         }, 
         () => fetchTags()
@@ -296,9 +296,9 @@ export default function Dashboard() {
       id: tag.id,
       name: tag.description || tag.tag_id,
       type: 'gps_tag' as const,
-      isActive: isDeviceActive(tag.last_ping_at, tag.is_active),
+      isActive: isDeviceActive(tag.last_seen_at, tag.is_active),
       batteryLevel: tag.battery_level,
-      lastSeen: tag.last_ping_at,
+      lastSeen: tag.last_seen_at,
       location: tag.current_location
     })),
     ...personalDevices.map(device => ({
@@ -594,7 +594,7 @@ export default function Dashboard() {
                   description: selectedTag.description,
                   is_active: selectedTag.is_active,
                   battery_level: selectedTag.battery_level,
-                  last_seen_at: selectedTag.last_ping_at,
+                  last_seen_at: selectedTag.last_seen_at,
                   current_location: selectedTag.current_location
                 } : null}
                 height="500px"
