@@ -40,14 +40,32 @@ function createSupabaseClient() {
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('🔍 [API] POST /api/device/personal - Starting request')
+    
     const supabase = createSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    console.log('🔧 [API] Supabase client created')
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    console.log('🔐 [API] Auth check result:', { 
+      hasUser: !!user, 
+      userId: user?.id, 
+      userEmail: user?.email,
+      authError: authError?.message 
+    })
+    
+    if (authError) {
+      console.error('❌ [API] Auth error:', authError)
+      return NextResponse.json({ error: 'Authentication error: ' + authError.message }, { status: 401 })
+    }
     
     if (!user) {
+      console.error('❌ [API] No user found in session')
       return NextResponse.json({ error: 'Please log in to add devices' }, { status: 401 })
     }
 
     const body = await request.json()
+    console.log('📥 [API] Request body:', body)
+    
     const { 
       device_type, 
       device_name, 
@@ -59,13 +77,16 @@ export async function POST(request: NextRequest) {
     // Validate device type
     const validTypes = ['phone', 'tablet', 'watch', 'laptop']
     if (!validTypes.includes(device_type)) {
+      console.error('❌ [API] Invalid device type:', device_type)
       return NextResponse.json({ error: 'Invalid device type' }, { status: 400 })
     }
 
     if (!hardware_fingerprint) {
+      console.error('❌ [API] Missing hardware fingerprint')
       return NextResponse.json({ error: 'Hardware fingerprint is required' }, { status: 400 })
     }
 
+    console.log('📱 [API] Calling register_personal_device function...')
     // Register personal device using stored function
     const { data, error } = await supabase.rpc('register_personal_device', {
       p_device_type: device_type,
@@ -75,11 +96,14 @@ export async function POST(request: NextRequest) {
       p_device_os: device_os
     })
 
+    console.log('📤 [API] Function result:', { data, error })
+
     if (error) {
-      console.error('Database error:', error)
+      console.error('❌ [API] Database error:', error)
       throw error
     }
 
+    console.log('✅ [API] Success! Returning response')
     return NextResponse.json({
       success: true,
       device_id: data.device_id,
@@ -88,7 +112,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error registering personal device:', error)
+    console.error('❌ [API] Error registering personal device:', error)
     return NextResponse.json(
       { error: 'Failed to register device' },
       { status: 500 }
