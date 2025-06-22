@@ -25,16 +25,7 @@ export async function POST(request: NextRequest) {
       .from('personal_devices')
       .update({
         last_ping_at: new Date().toISOString(),
-        location_sharing_enabled: true,
-        // Store location as JSON in a metadata field if available
-        metadata: {
-          current_location: {
-            latitude: parseFloat(latitude),
-            longitude: parseFloat(longitude),
-            accuracy: parseFloat(accuracy),
-            timestamp: new Date().toISOString()
-          }
-        }
+        location_sharing_enabled: true
       })
       .eq('id', device_id)
       .select()
