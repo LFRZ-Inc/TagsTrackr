@@ -1,213 +1,340 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { User } from '@supabase/auth-helpers-nextjs'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { 
-  MapPin, 
-  Plus, 
-  Search, 
-  Grid3X3, 
-  List, 
-  Settings, 
-  Battery, 
-  Clock, 
-  Crown,
-  BarChart3,
-  ArrowRight,
-  RefreshCw,
-  Bell,
-  Shield,
-  CheckCircle2
-} from 'lucide-react'
-import { createSupabaseClient } from '@/lib/supabase'
+import LocationPinger from '@/components/LocationPinger'
 import InteractiveMap from '@/components/InteractiveMap'
-import type { User as SupabaseUser } from '@supabase/supabase-js'
+import AlertsManager from '@/components/AlertsManager'
+import { toast } from 'react-hot-toast'
 
+// Types
 interface PersonalDevice {
   id: string
-  tag_id: string
-  device_name: string
   device_type: string
-  description: string | null
+  device_name: string
+  hardware_fingerprint: string
+  device_model?: string
+  device_os?: string
+  sharing_enabled: boolean
   location_sharing_active: boolean
-  is_active: boolean | null
-  battery_level: number | null
-  last_ping_at: string | null
-  last_seen_at: string | null
+  privacy_mode: boolean
+  last_ping_at?: string
+  battery_level?: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  metadata?: any
+  user_id: string
   current_location?: {
     latitude: number
     longitude: number
-    accuracy: number
-    timestamp: string
+    accuracy?: number
+    recorded_at: string
   }
 }
 
-interface DashboardOption {
+interface Device {
   id: string
-  title: string
+  name: string
+  device_type: string
+  description?: string
+  is_active: boolean
+  battery_level?: number
+  last_seen_at?: string
+  current_location?: {
+    latitude: number
+    longitude: number
+    accuracy?: number
+    recorded_at: string
+  }
+}
+
+interface DashboardType {
+  id: string
+  name: string
   description: string
-  icon: any
-  link: string
-  isRecommended?: boolean
   features: string[]
-  bgColor: string
-  textColor: string
+  recommended?: boolean
 }
 
 export default function Dashboard() {
-  const supabase = createSupabaseClient()
-  const [user, setUser] = useState<SupabaseUser | null>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [devices, setDevices] = useState<PersonalDevice[]>([])
-  const [loading, setLoading] = useState(true)
+  const [tags, setTags] = useState<any[]>([])
   const [selectedDevice, setSelectedDevice] = useState<PersonalDevice | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [showDashboardOptions, setShowDashboardOptions] = useState(false)
-  const router = useRouter()
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  
+  // Modal states
+  const [showAddDeviceModal, setShowAddDeviceModal] = useState(false)
+  const [showDashboardSelector, setShowDashboardSelector] = useState(false)
+  
+  // Add Device Modal states
+  const [deviceType, setDeviceType] = useState('')
+  const [deviceName, setDeviceName] = useState('')
+  const [isRegistering, setIsRegistering] = useState(false)
 
-  const dashboardOptions: DashboardOption[] = [
+  const supabase = createClientComponentClient()
+
+  // Dashboard type options
+  const dashboardTypes: DashboardType[] = [
     {
       id: 'simple',
-      title: 'Simple Dashboard',
-      description: 'Perfect for basic tracking needs',
-      icon: BarChart3,
-      link: '/dashboard-simple',
-      features: ['Device location tracking', 'Battery monitoring', 'Basic activity status', 'Simple notifications'],
-      bgColor: 'bg-blue-50 border-blue-200 hover:bg-blue-100',
-      textColor: 'text-blue-900'
+      name: 'Simple Dashboard',
+      description: 'Basic tracking with essential features',
+      features: ['Device locations', 'Basic tracking', 'Simple interface']
     },
     {
       id: 'enhanced',
-      title: 'Enhanced Dashboard',
-      description: 'Advanced features with interactive maps',
-      icon: MapPin,
-      link: '/dashboard-enhanced',
-      isRecommended: true,
-      features: ['Interactive maps & satellite view', 'Geofencing & safe zones', 'Family sharing & permissions', 'Advanced analytics & reports'],
-      bgColor: 'bg-purple-50 border-purple-200 hover:bg-purple-100',
-      textColor: 'text-purple-900'
+      name: 'Enhanced Dashboard',
+      description: 'Advanced tracking with analytics',
+      features: ['Real-time tracking', 'Movement analytics', 'Geofencing', 'History'],
+      recommended: true
     }
   ]
 
+  // Device type options
+  const deviceTypes = [
+    { id: 'gps_tag', name: 'GPS Tag', icon: '🏷️', description: 'Physical GPS tracking device' },
+    { id: 'phone', name: 'Phone', icon: '📱', description: 'Mobile phone tracking' },
+    { id: 'tablet', name: 'Tablet', icon: '📱', description: 'Tablet device tracking' },
+    { id: 'watch', name: 'Watch', icon: '⌚', description: 'Smart watch tracking' },
+    { id: 'laptop', name: 'Laptop', icon: '💻', description: 'Laptop/computer tracking' }
+  ]
+
   useEffect(() => {
-    checkUser()
+    getUser()
+    fetchData()
   }, [])
 
-  useEffect(() => {
+  const getUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
     if (user) {
-      fetchDevices()
-    }
-  }, [user])
-
-  async function checkUser() {
-    try {
-      const { data: { user }, error } = await supabase.auth.getUser()
-      if (error || !user) {
-        router.push('/login')
-        return
-      }
       setUser(user)
-    } catch (error) {
-      router.push('/login')
+    } else {
+      redirect('/login')
+    }
+  }
+
+  const fetchData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Fetch personal devices with latest location
+      const { data: devicesData, error: devicesError } = await supabase
+        .from('personal_devices')
+        .select(`
+          *,
+          location_pings!location_pings_device_id_fkey (
+            latitude,
+            longitude,
+            accuracy,
+            recorded_at
+          )
+        `)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+
+      if (devicesError) throw devicesError
+
+      // Process devices with their latest location
+      const processedDevices = devicesData?.map(device => ({
+        ...device,
+        current_location: device.location_pings && device.location_pings.length > 0 
+          ? {
+              latitude: parseFloat(device.location_pings[0].latitude),
+              longitude: parseFloat(device.location_pings[0].longitude),
+              accuracy: device.location_pings[0].accuracy ? parseFloat(device.location_pings[0].accuracy) : undefined,
+              recorded_at: device.location_pings[0].recorded_at
+            }
+          : null
+      })) || []
+
+      setDevices(processedDevices)
+
+      // Also fetch tags for backward compatibility
+      const { data: tagsData, error: tagsError } = await supabase
+        .from('tags')
+        .select('*')
+        .eq('is_active', true)
+
+      if (tagsError) throw tagsError
+      setTags(tagsData || [])
+
+    } catch (error: any) {
+      console.error('Error fetching data:', error)
+      setError(error.message)
     } finally {
       setLoading(false)
     }
   }
 
-  async function fetchDevices() {
-    try {
-      const { data, error } = await supabase
-        .from('personal_devices')
-        .select('*')
-        .eq('user_id', user?.id)
-
-      if (error) throw error
-      
-      // Transform data to include current_location for map compatibility
-      const transformedDevices = (data || []).map(device => ({
-        ...device,
-        current_location: device.metadata?.current_location
-      }))
-      
-      setDevices(transformedDevices)
-    } catch (error) {
-      console.error('Error fetching devices:', error)
-    }
-  }
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
-
-  const sendTestLocation = async (deviceId: string) => {
-    try {
-      const session = await supabase.auth.getSession()
-      if (!session.data.session) return
-
-      const response = await fetch('/api/ping/simple', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.data.session.access_token}`
-        },
-        body: JSON.stringify({
-          device_id: deviceId,
-          latitude: 40.7128,
-          longitude: -74.0060,
-          accuracy: 10
-        })
-      })
-
-      if (response.ok) {
-        alert('✅ Test location sent successfully!')
-        fetchDevices()
-      } else {
-        alert('❌ Failed to send location')
-      }
-    } catch (error) {
-      console.error('Error sending location:', error)
-      alert('❌ Error sending location')
-    }
-  }
-
   // Convert PersonalDevice to Device for InteractiveMap compatibility
-  const convertToDevice = (device: PersonalDevice): any => ({
-    ...device,
-    is_active: device.location_sharing_active,
-    description: device.description || '',
-    last_seen_at: device.last_ping_at || device.last_seen_at
+  const convertToDevice = (device: PersonalDevice): Device => ({
+    id: device.id,
+    name: device.device_name,
+    device_type: device.device_type,
+    description: `${device.device_type} - ${device.device_model || 'Unknown model'}`,
+    is_active: device.is_active && device.location_sharing_active,
+    battery_level: device.battery_level,
+    last_seen_at: device.last_ping_at,
+    current_location: device.current_location
   })
 
-  const filteredDevices = devices.filter(device =>
-    device.device_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    device.device_type.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const handleDeviceSelect = (device: PersonalDevice) => {
+    setSelectedDevice(device)
+  }
+
+  const handleUpdateLocation = async (device: PersonalDevice) => {
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by your browser')
+      return
+    }
+
+    const loadingToast = toast.loading('Getting your location...')
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          resolve,
+          reject,
+          { 
+            enableHighAccuracy: true, 
+            timeout: 10000, 
+            maximumAge: 60000 
+          }
+        )
+      })
+
+      const { latitude, longitude, accuracy } = position.coords
+
+      // Save location to location_pings table
+      const { error: pingError } = await supabase
+        .from('location_pings')
+        .insert({
+          device_id: device.id,
+          latitude: latitude,
+          longitude: longitude,
+          accuracy: accuracy,
+          recorded_at: new Date().toISOString(),
+          is_background_ping: false,
+          location_source: 'gps'
+        })
+
+      if (pingError) throw pingError
+
+      // Update device's last_ping_at
+      const { error: deviceError } = await supabase
+        .from('personal_devices')
+        .update({ 
+          last_ping_at: new Date().toISOString(),
+          location_sharing_active: true
+        })
+        .eq('id', device.id)
+
+      if (deviceError) throw deviceError
+
+      toast.dismiss(loadingToast)
+      toast.success(`Location for ${device.device_name} updated at ${new Date().toLocaleTimeString()}`, {
+        duration: 5000
+      })
+
+      // Refresh data to show updated location
+      await fetchData()
+
+    } catch (error: any) {
+      toast.dismiss(loadingToast)
+      console.error('Geolocation error:', error)
+      
+      if (error.code === 1) {
+        toast.error('Location access denied. Please enable location permissions.')
+      } else if (error.code === 2) {
+        toast.error('Location unavailable. Please try again.')
+      } else if (error.code === 3) {
+        toast.error('Location request timeout. Please try again.')
+      } else {
+        toast.error(`Failed to update location: ${error.message}`)
+      }
+    }
+  }
+
+  const handleAddDevice = async () => {
+    if (!deviceType || !deviceName.trim()) {
+      toast.error('Please select a device type and enter a device name')
+      return
+    }
+
+    setIsRegistering(true)
+    const loadingToast = toast.loading('Registering device...')
+
+    try {
+      // Generate hardware fingerprint based on device type
+      const hardwareFingerprint = `${deviceType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+      const { data, error } = await supabase
+        .from('personal_devices')
+        .insert({
+          device_type: deviceType,
+          device_name: deviceName.trim(),
+          hardware_fingerprint: hardwareFingerprint,
+          device_model: deviceType === 'phone' || deviceType === 'tablet' ? navigator.userAgent : deviceType,
+          device_os: navigator.platform,
+          sharing_enabled: true,
+          location_sharing_active: false,
+          privacy_mode: false,
+          is_active: true
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      toast.dismiss(loadingToast)
+      toast.success(`${deviceName} registered successfully!`)
+
+      // Reset modal
+      setShowAddDeviceModal(false)
+      setDeviceType('')
+      setDeviceName('')
+
+      // Refresh data
+      await fetchData()
+
+    } catch (error: any) {
+      toast.dismiss(loadingToast)
+      toast.error(`Failed to register device: ${error.message}`)
+    } finally {
+      setIsRegistering(false)
+    }
+  }
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading dashboard...</p>
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading your dashboard...</p>
         </div>
       </div>
     )
   }
 
-  if (!user) {
+  if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Authentication Required</h2>
-          <p className="text-gray-600 mb-4">Please log in to access your dashboard</p>
-          <Link
-            href="/login"
-            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          <div className="text-red-600 text-xl mb-4">⚠️ Error Loading Dashboard</div>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button 
+            onClick={fetchData}
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
           >
-            Go to Login
-          </Link>
+            Try Again
+          </button>
         </div>
       </div>
     )
@@ -216,304 +343,314 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <Link href="/" className="flex items-center">
-                <MapPin className="h-8 w-8 text-blue-600" />
-                <span className="ml-2 text-xl font-bold text-gray-900">TagsTrackr</span>
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center space-x-4">
+              <h1 className="text-2xl font-bold text-gray-900">TagsTrackr Dashboard</h1>
+              <div className="text-sm text-gray-500">
+                {devices.length} devices • {tags.length} tags
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              {/* Dashboard Type Selector */}
+              <button
+                onClick={() => setShowDashboardSelector(!showDashboardSelector)}
+                className="relative inline-flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+              >
+                <span className="text-sm font-medium">Dashboard Type</span>
+                <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Add Device Button */}
+              <button
+                onClick={() => setShowAddDeviceModal(true)}
+                className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              >
+                <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Add Device
+              </button>
+
+              {/* Legacy Add GPS Tag */}
+              <Link 
+                href="/register-tag"
+                className="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+              >
+                <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+                Add GPS Tag
+              </Link>
+
+              {/* Account */}
+              <Link 
+                href="/account"
+                className="inline-flex items-center px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Account
               </Link>
             </div>
-            
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-700">{user?.email}</span>
-              </div>
-              
-              <button
-                onClick={handleSignOut}
-                className="text-gray-600 hover:text-gray-900 text-sm"
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Top Bar with Search and Controls */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 space-y-4 lg:space-y-0">
-          {/* Search and Filter */}
-          <div className="flex items-center space-x-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search devices..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            
-            <select className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-              <option>All Devices</option>
-              <option>Active Only</option>
-              <option>Inactive Only</option>
-            </select>
-
-            <div className="flex bg-white border border-gray-300 rounded-lg overflow-hidden">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-2 ${viewMode === 'grid' ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                <Grid3X3 className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`p-2 ${viewMode === 'list' ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                <List className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Action Buttons with Dashboard Options */}
-          <div className="flex items-center space-x-3">
-            {/* Dashboard Options Toggle */}
-            <button
-              onClick={() => setShowDashboardOptions(!showDashboardOptions)}
-              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-            >
-              <Settings className="h-4 w-4 mr-2" />
-              Dashboard Type
-            </button>
-
-            {/* Register Device Button */}
-            <Link
-              href="/register-tag"
-              className="inline-flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
-            >
-              📱 Register Device
-            </Link>
-
-            {/* Add Device Button */}
-            <Link
-              href="/register-tag"
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Device
-            </Link>
-
-            {/* Add GPS Tag Button */}
-            <Link
-              href="/register-tag"
-              className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add GPS Tag
-            </Link>
           </div>
         </div>
 
-        {/* Dashboard Options Panel */}
-        {showDashboardOptions && (
-          <div className="mb-6 bg-white rounded-2xl shadow-lg p-6 border">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Choose Your Dashboard Experience</h3>
-                <p className="text-sm text-gray-600">Select the dashboard that best fits your needs</p>
-              </div>
-              <button
-                onClick={() => setShowDashboardOptions(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {dashboardOptions.map((option) => {
-                const IconComponent = option.icon
-                return (
-                  <Link
-                    key={option.id}
-                    href={option.link}
-                    className={`relative border-2 rounded-2xl p-6 transition-all duration-200 hover:shadow-lg ${option.bgColor}`}
-                  >
-                    {option.isRecommended && (
-                      <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                        <div className="inline-flex items-center px-3 py-1 bg-purple-600 text-white text-xs font-medium rounded-full">
-                          <Crown className="h-3 w-3 mr-1" />
-                          Recommended
-                        </div>
-                      </div>
+        {/* Dashboard Type Selector Dropdown */}
+        {showDashboardSelector && (
+          <div className="absolute right-4 top-16 z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-6 w-96">
+            <h3 className="text-lg font-semibold mb-4">Choose Dashboard Type</h3>
+            <div className="space-y-4">
+              {dashboardTypes.map((type) => (
+                <Link
+                  key={type.id}
+                  href={type.id === 'simple' ? '/dashboard-simple' : '/dashboard-enhanced'}
+                  className="block p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                  onClick={() => setShowDashboardSelector(false)}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-gray-900">{type.name}</h4>
+                    {type.recommended && (
+                      <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                        Recommended
+                      </span>
                     )}
-                    
-                    <div className="text-center">
-                      <div className={`inline-flex items-center justify-center w-16 h-16 ${option.bgColor.replace('50', '100')} rounded-xl mb-4`}>
-                        <IconComponent className={`h-8 w-8 ${option.textColor.replace('900', '600')}`} />
-                      </div>
-                      <h4 className={`text-xl font-semibold ${option.textColor} mb-2`}>{option.title}</h4>
-                      <p className={`text-sm ${option.textColor.replace('900', '700')} mb-4`}>{option.description}</p>
-                      
-                      <div className="text-left">
-                        <h5 className={`text-sm font-medium ${option.textColor.replace('900', '800')} mb-2`}>Features:</h5>
-                        <ul className={`text-xs ${option.textColor.replace('900', '700')} space-y-1`}>
-                          {option.features.map((feature, index) => (
-                            <li key={index} className="flex items-center">
-                              <CheckCircle2 className="h-3 w-3 text-green-500 mr-2 flex-shrink-0" />
-                              {feature}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-
-                      <div className="mt-4 flex items-center justify-center">
-                        <ArrowRight className="h-4 w-4 text-current" />
-                      </div>
-                    </div>
-                  </Link>
-                )
-              })}
+                  </div>
+                  <p className="text-sm text-gray-600 mb-3">{type.description}</p>
+                  <ul className="text-xs text-gray-500 space-y-1">
+                    {type.features.map((feature, index) => (
+                      <li key={index} className="flex items-center">
+                        <svg className="mr-2 h-3 w-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+                </Link>
+              ))}
             </div>
+            <button
+              onClick={() => setShowDashboardSelector(false)}
+              className="mt-4 w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
           </div>
         )}
+      </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          
           {/* Live Map Section */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow-sm">
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <h2 className="text-lg font-semibold text-gray-900">Live Map</h2>
-                  {devices.filter(d => d.location_sharing_active).length > 0 && (
-                    <div className="flex items-center text-green-600 text-sm">
-                      <div className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></div>
-                      Live Updates
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={fetchDevices}
-                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </button>
-              </div>
-              
-              <div className="p-0">
+          <div className="bg-white rounded-lg shadow-sm border">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-semibold text-gray-900">Live Map</h2>
+              <p className="text-sm text-gray-500 mt-1">Real-time device locations</p>
+            </div>
+            <div className="p-6">
+              <div className="h-96 rounded-lg overflow-hidden">
                 <InteractiveMap
-                  devices={filteredDevices.map(convertToDevice)}
+                  devices={devices.map(convertToDevice)}
                   selectedDevice={selectedDevice ? convertToDevice(selectedDevice) : null}
-                  height="400px"
-                  onDeviceSelect={(device: any) => {
+                  onDeviceSelect={(device) => {
                     const personalDevice = devices.find(d => d.id === device.id)
-                    if (personalDevice) setSelectedDevice(personalDevice)
+                    if (personalDevice) handleDeviceSelect(personalDevice)
                   }}
-                  realTimeUpdates={true}
-                  onRefresh={fetchDevices}
+                  height="100%"
                 />
               </div>
             </div>
           </div>
 
           {/* Your Devices Section */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow-sm">
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900">Your Devices</h2>
-                <div className="text-sm text-gray-500">
-                  {devices.length} total
+          <div className="bg-white rounded-lg shadow-sm border">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-semibold text-gray-900">Your Devices</h2>
+              <p className="text-sm text-gray-500 mt-1">Manage and track your devices</p>
+            </div>
+            <div className="p-6">
+              {devices.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="text-gray-400 text-4xl mb-4">📱</div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No devices registered</h3>
+                  <p className="text-gray-500 mb-4">Add your first device to start tracking</p>
+                  <button
+                    onClick={() => setShowAddDeviceModal(true)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+                  >
+                    Add Your First Device
+                  </button>
                 </div>
-              </div>
-              
-              <div className="p-6">
-                {filteredDevices.length === 0 ? (
-                  <div className="text-center py-8">
-                    <MapPin className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No devices found</h3>
-                    <p className="text-gray-500 mb-4">Get started by adding your first device</p>
-                    <Link
-                      href="/register-tag"
-                      className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              ) : (
+                <div className="space-y-4">
+                  {devices.map((device) => (
+                    <div 
+                      key={device.id} 
+                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                        selectedDevice?.id === device.id 
+                          ? 'border-blue-300 bg-blue-50' 
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                      onClick={() => handleDeviceSelect(device)}
                     >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Your First Device
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {filteredDevices.map((device) => (
-                      <div 
-                        key={device.id} 
-                        className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                          selectedDevice?.id === device.id 
-                            ? 'border-blue-300 bg-blue-50' 
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                        onClick={() => setSelectedDevice(device)}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="font-medium text-gray-900">
-                            {device.device_name}
-                          </h3>
-                          <div className={`w-2 h-2 rounded-full ${
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <span className="text-2xl">
+                            {deviceTypes.find(t => t.id === device.device_type)?.icon || '📱'}
+                          </span>
+                          <div>
+                            <h3 className="font-medium text-gray-900">{device.device_name}</h3>
+                            <p className="text-sm text-gray-500 capitalize">
+                              {device.device_type.replace('_', ' ')}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {/* Status Indicator */}
+                          <div className={`w-3 h-3 rounded-full ${
                             device.location_sharing_active ? 'bg-green-500' : 'bg-gray-400'
                           }`}></div>
-                        </div>
-                        
-                        <div className="text-sm text-gray-600 space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span>Type:</span>
-                            <span className="capitalize">{device.device_type.replace('_', ' ')}</span>
-                          </div>
                           
+                          {/* Battery Level */}
                           {device.battery_level && (
-                            <div className="flex items-center justify-between">
-                              <span>Battery:</span>
-                              <div className="flex items-center space-x-1">
-                                <Battery className="h-3 w-3" />
-                                <span>{device.battery_level}%</span>
-                              </div>
-                            </div>
+                            <span className="text-xs text-gray-500">
+                              🔋 {device.battery_level}%
+                            </span>
                           )}
-                          
-                          {device.last_ping_at && (
-                            <div className="flex items-center justify-between">
-                              <span>Last seen:</span>
-                              <div className="flex items-center space-x-1">
-                                <Clock className="h-3 w-3" />
-                                <span>{new Date(device.last_ping_at).toLocaleString()}</span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="mt-3 flex space-x-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              sendTestLocation(device.id)
-                            }}
-                            className="flex-1 px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
-                          >
-                            📍 Update Location
-                          </button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      
+                      {/* Last Seen */}
+                      {device.last_ping_at && (
+                        <div className="mt-2 text-xs text-gray-500">
+                          Last seen: {new Date(device.last_ping_at).toLocaleString()}
+                        </div>
+                      )}
+
+                      {/* Update Location Button */}
+                      <div className="mt-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleUpdateLocation(device)
+                          }}
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-4 rounded-lg transition-colors"
+                        >
+                          📍 Update Location
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Additional Components */}
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="bg-white rounded-lg shadow-sm border">
+            <div className="p-6">
+              <LocationPinger />
+            </div>
+          </div>
+          
+          <div className="bg-white rounded-lg shadow-sm border">
+            <div className="p-6">
+              <AlertsManager />
             </div>
           </div>
         </div>
       </div>
+
+      {/* Add Device Modal */}
+      {showAddDeviceModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-semibold text-gray-900">Add New Device</h2>
+              <p className="text-sm text-gray-500 mt-1">Register a new device for tracking</p>
+            </div>
+            
+            <div className="p-6">
+              <div className="space-y-6">
+                {/* Device Type Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Choose Device Type
+                  </label>
+                  <div className="grid grid-cols-1 gap-3">
+                    {deviceTypes.map((type) => (
+                      <label
+                        key={type.id}
+                        className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${
+                          deviceType === type.id
+                            ? 'border-blue-300 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="deviceType"
+                          value={type.id}
+                          checked={deviceType === type.id}
+                          onChange={(e) => setDeviceType(e.target.value)}
+                          className="sr-only"
+                        />
+                        <span className="text-2xl mr-3">{type.icon}</span>
+                        <div>
+                          <div className="font-medium text-gray-900">{type.name}</div>
+                          <div className="text-sm text-gray-500">{type.description}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Device Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Device Name
+                  </label>
+                  <input
+                    type="text"
+                    value={deviceName}
+                    onChange={(e) => setDeviceName(e.target.value)}
+                    placeholder="e.g., My iPhone, Work Laptop, Kids Tablet"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t bg-gray-50 flex space-x-3">
+              <button
+                onClick={() => {
+                  setShowAddDeviceModal(false)
+                  setDeviceType('')
+                  setDeviceName('')
+                }}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 rounded-lg transition-colors"
+                disabled={isRegistering}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddDevice}
+                disabled={!deviceType || !deviceName.trim() || isRegistering}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white py-2 rounded-lg transition-colors"
+              >
+                {isRegistering ? 'Registering...' : 'Add Device'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 } 

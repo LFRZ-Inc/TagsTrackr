@@ -1,116 +1,104 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 export async function POST(request: NextRequest) {
   try {
-    const { 
-      tag_id, 
-      latitude, 
-      longitude, 
-      accuracy,
-      battery_level,
-      signal_strength,
-      timestamp 
-    } = await request.json()
+    const { lat, lon, device_id, accuracy, altitude, speed, heading } = await request.json()
 
-    if (!tag_id || !latitude || !longitude) {
+    // Validate required fields
+    if (!lat || !lon || !device_id) {
       return NextResponse.json(
-        { error: 'Tag ID, latitude, and longitude are required' },
+        { error: 'Missing required fields: lat, lon, device_id' },
         { status: 400 }
       )
     }
 
-    // Validate coordinates
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    // Create Supabase client
+    const supabase = createSupabaseServerClient()
+
+    // Get current user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
       return NextResponse.json(
-        { error: 'Invalid coordinates' },
-        { status: 400 }
+        { error: 'Unauthorized' },
+        { status: 401 }
       )
     }
 
-    // Check if tag exists
-    const { data: tag } = await supabase
-      .from('tags')
-      .select('*')
-      .eq('tag_id', tag_id)
+    // Verify device belongs to user
+    const { data: device, error: deviceError } = await supabase
+      .from('personal_devices')
+      .select('id, device_name, user_id')
+      .eq('id', device_id)
+      .eq('user_id', user.id)
       .single()
 
-    if (!tag) {
+    if (deviceError || !device) {
       return NextResponse.json(
-        { error: 'Tag not found' },
+        { error: 'Device not found or unauthorized' },
         { status: 404 }
       )
     }
 
-    // Insert GPS ping
+    // Insert location ping
     const { data: ping, error: pingError } = await supabase
-      .from('gps_pings')
+      .from('location_pings')
       .insert({
-        tag_id: tag.id,
-        latitude,
-        longitude,
+        device_id: device_id,
+        latitude: lat,
+        longitude: lon,
         accuracy: accuracy || null,
-        battery_level: battery_level || null,
-        signal_strength: signal_strength || null,
-        timestamp: timestamp || new Date().toISOString(),
-        created_at: new Date().toISOString()
+        altitude: altitude || null,
+        speed: speed || null,
+        heading: heading || null,
+        recorded_at: new Date().toISOString(),
+        is_background_ping: false,
+        location_source: 'gps'
       })
       .select()
       .single()
 
     if (pingError) {
-      console.error('Failed to insert ping:', pingError)
+      console.error('Ping error:', pingError)
       return NextResponse.json(
-        { error: 'Failed to record ping' },
+        { error: 'Failed to save location ping' },
         { status: 500 }
       )
     }
 
-    // Update tag with latest ping info
+    // Update device's last ping timestamp
     const { error: updateError } = await supabase
-      .from('tags')
-      .update({
-        battery_level: battery_level || tag.battery_level,
-        last_seen_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+      .from('personal_devices')
+      .update({ 
+        last_ping_at: new Date().toISOString(),
+        location_sharing_active: true
       })
-      .eq('tag_id', tag_id)
+      .eq('id', device_id)
 
     if (updateError) {
-      console.error('Failed to update tag:', updateError)
+      console.error('Update error:', updateError)
+      // Don't fail the request if update fails
     }
 
-    // Log ping for analytics
-    const { error: logError } = await supabase
-      .from('pings_log')
-      .insert({
-        tag_id: tag.id,
-        ping_data: {
-          latitude,
-          longitude,
-          accuracy,
-          battery_level,
-          signal_strength,
-          timestamp
-        },
-        created_at: new Date().toISOString()
-      })
-
-    if (logError) {
-      console.error('Failed to log ping:', logError)
-    }
-
-    return NextResponse.json({ 
-      message: 'Ping recorded successfully',
-      ping_id: ping.id,
-      timestamp: ping.created_at
+    return NextResponse.json({
+      success: true,
+      message: `Location updated for ${device.device_name}`,
+      ping: ping,
+      timestamp: new Date().toISOString()
     })
 
-  } catch (error) {
-    console.error('Ping recording error:', error)
+  } catch (error: any) {
+    console.error('Ping API error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     )
   }
+}
+
+export async function GET() {
+  return NextResponse.json({
+    message: 'Ping API endpoint',
+    usage: 'POST with { lat, lon, device_id, accuracy?, altitude?, speed?, heading? }'
+  })
 } 
