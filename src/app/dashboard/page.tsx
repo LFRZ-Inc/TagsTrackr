@@ -279,12 +279,24 @@ export default function Dashboard() {
     router.push('/')
   }
 
+  // Helper function to determine if a device is active based on recent activity
+  const isDeviceActive = (lastSeen: string | null, locationSharingEnabled?: boolean | null) => {
+    if (!lastSeen) return false
+    
+    const lastSeenDate = new Date(lastSeen)
+    const now = new Date()
+    const diffMinutes = (now.getTime() - lastSeenDate.getTime()) / (1000 * 60)
+    
+    // Device is active if it has pinged within the last 10 minutes AND location sharing is enabled
+    return diffMinutes <= 10 && (locationSharingEnabled !== false)
+  }
+
   const allDevices = [
     ...tags.map(tag => ({
       id: tag.id,
       name: tag.description || tag.tag_id,
       type: 'gps_tag' as const,
-      isActive: tag.is_active,
+      isActive: isDeviceActive(tag.last_ping_at, tag.is_active),
       batteryLevel: tag.battery_level,
       lastSeen: tag.last_ping_at,
       location: tag.current_location
@@ -293,7 +305,7 @@ export default function Dashboard() {
       id: device.id,
       name: device.device_name,
       type: device.device_type as keyof typeof deviceTypeIcons,
-      isActive: device.location_sharing_enabled,
+      isActive: isDeviceActive(device.last_ping_at, device.location_sharing_enabled),
       batteryLevel: device.battery_level,
       lastSeen: device.last_ping_at,
       location: device.current_location
