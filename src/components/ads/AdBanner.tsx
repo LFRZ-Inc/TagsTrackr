@@ -57,13 +57,23 @@ export default function AdBanner({ pageContext, className = '', compact = false 
         .order('priority', { ascending: false })
         .order('created_at', { ascending: false })
 
-      if (error) throw error
+      if (error) {
+        // If ads table doesn't exist, just set empty array and continue
+        if (error.code === '42P01') {
+          console.log('Ads table not found, continuing without ads')
+          setAds([])
+          return
+        }
+        throw error
+      }
 
       if (data) {
         setAds(data)
       }
     } catch (error) {
       console.error('Error fetching ads:', error)
+      // Set empty ads array to prevent blocking the app
+      setAds([])
     } finally {
       setLoading(false)
     }
