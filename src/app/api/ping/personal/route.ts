@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 // Create client for auth verification
 const supabaseAuth = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     // Verify the JWT token
     const token = authHeader.substring(7)
     const { data: userData, error: userError } = await supabaseAuth.auth.getUser(token)
-
+    
     if (userError || !userData.user) {
       console.error('❌ [API] Auth failed:', userError)
       return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
     // Verify the JWT token
     const token = authHeader.substring(7)
     const { data: userData, error: userError } = await supabaseAuth.auth.getUser(token)
-
+    
     if (userError || !userData.user) {
       return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
     }

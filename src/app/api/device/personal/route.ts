@@ -12,15 +12,15 @@ const supabaseAuth = createClient(
 
 // Create admin client that bypasses RLS
 const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
+    {
     auth: {
       autoRefreshToken: false,
       persistSession: false
     }
-  }
-)
+    }
+  )
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,11 +57,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     console.log('📝 [API] Request body:', JSON.stringify(body, null, 2))
 
-    const {
-      device_type,
-      device_name,
+    const { 
+      device_type, 
+      device_name, 
       hardware_fingerprint,
-      device_model,
+      device_model, 
       device_os
     } = body
 
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('✅ [API] Device created successfully:', newDevice.id)
-    
+
     return NextResponse.json({
       success: true,
       device: newDevice,
@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('✅ [API] Found', devices?.length || 0, 'devices')
-    
+
     return NextResponse.json({
       success: true,
       devices: devices || []
@@ -267,7 +267,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     console.log('✅ [API] Device settings updated successfully')
-    
+
     return NextResponse.json({
       success: true,
       message: 'Device settings updated successfully'

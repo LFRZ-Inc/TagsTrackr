@@ -381,20 +381,20 @@ export default function InteractiveMap({
               )}
 
               {/* Device Marker */}
-              <Marker
+            <Marker
                 position={position}
-                icon={icon}
-                eventHandlers={{
+              icon={icon}
+              eventHandlers={{
                   click: () => onDeviceSelect?.(device)
-                }}
-              >
-                <Popup>
+              }}
+            >
+              <Popup>
                   <div className="p-3 min-w-[250px]">
                     <div className="flex items-center gap-2 mb-3">
                       <MapPin className="h-5 w-5 text-blue-600" />
                       <h3 className="font-semibold text-gray-900 text-lg">
                         {device.device_name}
-                      </h3>
+                    </h3>
                       <div className={`w-3 h-3 rounded-full ${device.is_active ? 'bg-green-500' : 'bg-gray-400'}`} />
                     </div>
                     
@@ -408,17 +408,17 @@ export default function InteractiveMap({
                         <div className="flex items-center justify-between">
                           <span className="font-medium text-gray-700">Battery:</span>
                           <div className="flex items-center gap-1 text-gray-600">
-                            <Battery className="h-3 w-3" />
+                        <Battery className="h-3 w-3" />
                             <span>{device.battery_level}%</span>
                           </div>
-                        </div>
-                      )}
-                      
+                      </div>
+                    )}
+                    
                       {device.last_seen_at && (
                         <div className="flex items-center justify-between">
                           <span className="font-medium text-gray-700">Last Seen:</span>
                           <div className="flex items-center gap-1 text-gray-600">
-                            <Clock className="h-3 w-3" />
+                        <Clock className="h-3 w-3" />
                             <span>{formatTimestamp(device.last_seen_at)}</span>
                           </div>
                         </div>
@@ -428,9 +428,9 @@ export default function InteractiveMap({
                         <div className="flex items-center justify-between">
                           <span className="font-medium text-gray-700">Accuracy:</span>
                           <span className="text-gray-600">±{Math.round(accuracy)}m</span>
-                        </div>
-                      )}
-                      
+                      </div>
+                    )}
+                    
                       <div className="border-t pt-2 mt-3">
                         <div className="text-xs text-gray-500 space-y-1">
                           <div>Coordinates: {device.current_location.latitude.toFixed(6)}, {device.current_location.longitude.toFixed(6)}</div>
@@ -442,10 +442,10 @@ export default function InteractiveMap({
                           )}
                         </div>
                       </div>
-                    </div>
                   </div>
-                </Popup>
-              </Marker>
+                </div>
+              </Popup>
+            </Marker>
             </div>
           )
         })}

@@ -232,7 +232,7 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
 
     setLoading(true);
     setError('');
-
+    
     try {
       // Get user's access token for API authentication
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -262,7 +262,7 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
       };
 
       console.log('🔍 [DeviceTypeSelector] Adding device:', deviceData);
-
+      
       const response = await fetch('/api/device/personal', {
         method: 'POST',
         headers: {
@@ -289,10 +289,10 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
       onDeviceAdded();
       
       // Reset form
-      setSelectedType('');
-      setDeviceName('');
-      setDeviceModel('');
-      setDeviceOS('');
+        setSelectedType('');
+        setDeviceName('');
+        setDeviceModel('');
+        setDeviceOS('');
       setAutoDetected(null);
       
     } catch (error) {

@@ -154,14 +154,14 @@ export default function Home() {
               ) : (
                 <>
                   <Link href="/login" className="text-gray-600 hover:text-gray-900 transition-colors">
-                    Sign In
-                  </Link>
+                Sign In
+              </Link>
                   <Link 
                     href="/register-tag" 
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
                   >
                     Start Tracking
-                  </Link>
+              </Link>
                 </>
               )}
             </div>
@@ -201,14 +201,14 @@ export default function Home() {
       <section className="pt-24 pb-20 bg-gradient-to-br from-blue-50 to-indigo-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
+          <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
               Never Lose Your
               <span className="text-blue-600 block">Valuables Again</span>
-            </h1>
-            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+          </h1>
+          <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
               Advanced GPS tracking for luggage, electronics, and personal items. 
               Get real-time alerts, family sharing, and complete privacy control.
-            </p>
+          </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
               <Link 
@@ -217,15 +217,15 @@ export default function Home() {
               >
                 <Play className="h-5 w-5 mr-2" />
                 Start Tracking Free
-              </Link>
+            </Link>
               <Link 
                 href="/dashboard" 
                 className="inline-flex items-center px-8 py-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-lg font-semibold"
               >
                 View Demo Dashboard
                 <ArrowRight className="h-5 w-5 ml-2" />
-              </Link>
-            </div>
+            </Link>
+          </div>
 
             {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
@@ -261,7 +261,7 @@ export default function Home() {
               <div key={index} className="p-6 border border-gray-200 rounded-xl hover:shadow-lg transition-shadow">
                 <div className={`inline-flex p-3 rounded-lg bg-gray-50 mb-4`}>
                   <feature.icon className={`h-6 w-6 ${feature.color}`} />
-                </div>
+              </div>
                 <h3 className="text-xl font-semibold mb-3">{feature.title}</h3>
                 <p className="text-gray-600">{feature.description}</p>
               </div>
@@ -286,8 +286,8 @@ export default function Home() {
                 <p className="text-gray-600 mb-4">{useCase.description}</p>
                 <div className="text-sm font-medium text-red-600 bg-red-50 px-3 py-1 rounded-full inline-block">
                   {useCase.stats}
-                </div>
-              </div>
+            </div>
+            </div>
             ))}
           </div>
         </div>
@@ -308,12 +308,12 @@ export default function Home() {
                   {[...Array(testimonial.rating)].map((_, i) => (
                     <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
                   ))}
-                </div>
+              </div>
                 <p className="text-gray-600 mb-4">"{testimonial.content}"</p>
                 <div>
                   <div className="font-semibold text-gray-900">{testimonial.name}</div>
                   <div className="text-sm text-gray-500">{testimonial.role}</div>
-                </div>
+            </div>
               </div>
             ))}
           </div>
@@ -361,7 +361,7 @@ export default function Home() {
                 Get Started Free
               </Link>
             </div>
-
+            
             {/* Pro Plan */}
             <div className="bg-white p-8 rounded-xl shadow-lg border-2 border-blue-500 relative">
               <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
@@ -402,8 +402,8 @@ export default function Home() {
               >
                 Start Pro Trial
               </Link>
-            </div>
-
+          </div>
+          
             {/* Enterprise Plan */}
             <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
               <div className="text-center mb-8">
@@ -466,7 +466,7 @@ export default function Home() {
               className="inline-flex items-center px-8 py-4 border border-blue-300 text-white rounded-lg hover:bg-blue-700 transition-colors text-lg font-semibold"
             >
               Try Demo
-            </Link>
+          </Link>
           </div>
         </div>
       </section>

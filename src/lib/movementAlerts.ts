@@ -166,3 +166,4 @@ export default MovementAlertService
 
 // Singleton instance
 export const movementAlertService = new MovementAlertService()
+ 
