@@ -91,6 +91,7 @@ export default function InteractiveMap({
   showAccuracyCircles = true,
   enableGeocoding = true
 }: InteractiveMapProps) {
+  console.log('InteractiveMap received devices:', devices)
   const [map, setMap] = useState<any>(null)
   const [leafletLoaded, setLeafletLoaded] = useState(false)
   const [customIcon, setCustomIcon] = useState<any>(null)
@@ -362,7 +363,11 @@ export default function InteractiveMap({
 
         {/* Render device markers */}
         {leafletLoaded && (devices || []).map((device) => {
-          if (!device.current_location?.latitude || !device.current_location?.longitude) return null
+          console.log('Rendering device:', device.device_name, 'Location:', device.current_location)
+          if (!device.current_location?.latitude || !device.current_location?.longitude) {
+            console.log(`Skipping device ${device.device_name} - no valid location`)
+            return null
+          }
           
           const isSelected = selectedDevice?.id === device.id
           const icon = (customIcon && typeof customIcon === 'function') ? customIcon(device.device_type, isSelected) : undefined

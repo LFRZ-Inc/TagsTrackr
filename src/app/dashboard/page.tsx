@@ -128,42 +128,68 @@ export default function Dashboard() {
       setLoading(true)
       setError(null)
 
-      // Fetch personal devices with latest location
+      // Fetch personal devices first
       const { data: devicesData, error: devicesError } = await supabase
         .from('personal_devices')
-        .select(`
-          *,
-          location_pings!location_pings_device_id_fkey (
-            latitude,
-            longitude,
-            accuracy,
-            recorded_at
-          )
-        `)
+        .select('*')
         .eq('is_active', true)
         .order('created_at', { ascending: false })
 
       if (devicesError) throw devicesError
 
+      // Fetch latest location ping for each device
+      const deviceIds = devicesData?.map(device => device.id) || []
+      let latestLocations: any[] = []
+      
+      if (deviceIds.length > 0) {
+        const { data: locationsData, error: locationsError } = await supabase
+          .from('location_pings')
+          .select('device_id, latitude, longitude, accuracy, recorded_at')
+          .in('device_id', deviceIds)
+          .order('recorded_at', { ascending: false })
+        
+        if (locationsError) {
+          console.error('Error fetching locations:', locationsError)
+        } else {
+          // Get only the most recent location per device
+          const locationMap = new Map()
+          locationsData?.forEach(location => {
+            if (!locationMap.has(location.device_id)) {
+              locationMap.set(location.device_id, location)
+            }
+          })
+          latestLocations = Array.from(locationMap.values())
+        }
+             }
+
       // Process devices with their latest location
       const processedDevices = devicesData?.map(device => {
-        // Sort location_pings by recorded_at to get the most recent one
-        const sortedPings = device.location_pings?.sort((a: any, b: any) => 
-          new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()
-        ) || []
+        // Find latest location for this device
+        const deviceLocation = latestLocations.find(loc => loc.device_id === device.id)
         
-        return {
+        const processedDevice = {
           ...device,
-          current_location: sortedPings.length > 0 
+          current_location: deviceLocation 
             ? {
-                latitude: parseFloat(sortedPings[0].latitude),
-                longitude: parseFloat(sortedPings[0].longitude),
-                accuracy: sortedPings[0].accuracy ? parseFloat(sortedPings[0].accuracy) : undefined,
-                recorded_at: sortedPings[0].recorded_at
+                latitude: parseFloat(deviceLocation.latitude),
+                longitude: parseFloat(deviceLocation.longitude),
+                accuracy: deviceLocation.accuracy ? parseFloat(deviceLocation.accuracy) : undefined,
+                recorded_at: deviceLocation.recorded_at
               }
             : null
         }
+        
+        // Debug logging
+        console.log(`Device ${device.device_name}:`, {
+          id: device.id,
+          has_location: !!deviceLocation,
+          location: processedDevice.current_location
+        })
+        
+        return processedDevice
       }) || []
+      
+      console.log('Processed devices for map:', processedDevices)
 
       setDevices(processedDevices)
 
@@ -259,6 +285,11 @@ export default function Dashboard() {
 
       // Refresh data to show updated location
       await fetchData()
+      
+      // Force a small delay and refresh again to ensure map updates
+      setTimeout(async () => {
+        await fetchData()
+      }, 1000)
 
     } catch (error: any) {
       toast.dismiss(loadingToast)
@@ -475,6 +506,7 @@ export default function Dashboard() {
                     const personalDevice = devices.find(d => d.id === device.id)
                     if (personalDevice) handleDeviceSelect(personalDevice)
                   }}
+                  onRefresh={fetchData}
                   height="100%"
                 />
               </div>
