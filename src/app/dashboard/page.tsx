@@ -357,6 +357,39 @@ export default function Dashboard() {
     }
   }
 
+  // Test function to add a sample location
+  const addTestLocation = async () => {
+    if (devices.length === 0) {
+      toast.error('No devices found to add test location')
+      return
+    }
+
+    const device = devices[0]
+    const testLatitude = 27.5069 // Nuevo Laredo area
+    const testLongitude = -99.5075
+
+    try {
+      const { error } = await supabase
+        .from('location_pings')
+        .insert({
+          device_id: device.id,
+          latitude: testLatitude,
+          longitude: testLongitude,
+          accuracy: 10,
+          recorded_at: new Date().toISOString(),
+          is_background_ping: false,
+          location_source: 'test'
+        })
+
+      if (error) throw error
+
+      toast.success('Test location added!')
+      await fetchData()
+    } catch (error: any) {
+      toast.error(`Failed to add test location: ${error.message}`)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -419,6 +452,14 @@ export default function Dashboard() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
                 Add Device
+              </button>
+
+              {/* Test Button for debugging */}
+              <button
+                onClick={addTestLocation}
+                className="inline-flex items-center px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+              >
+                🧪 Add Test Location
               </button>
 
               {/* Legacy Add GPS Tag */}
