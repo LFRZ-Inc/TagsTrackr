@@ -146,17 +146,24 @@ export default function Dashboard() {
       if (devicesError) throw devicesError
 
       // Process devices with their latest location
-      const processedDevices = devicesData?.map(device => ({
-        ...device,
-        current_location: device.location_pings && device.location_pings.length > 0 
-          ? {
-              latitude: parseFloat(device.location_pings[0].latitude),
-              longitude: parseFloat(device.location_pings[0].longitude),
-              accuracy: device.location_pings[0].accuracy ? parseFloat(device.location_pings[0].accuracy) : undefined,
-              recorded_at: device.location_pings[0].recorded_at
-            }
-          : null
-      })) || []
+      const processedDevices = devicesData?.map(device => {
+        // Sort location_pings by recorded_at to get the most recent one
+        const sortedPings = device.location_pings?.sort((a: any, b: any) => 
+          new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()
+        ) || []
+        
+        return {
+          ...device,
+          current_location: sortedPings.length > 0 
+            ? {
+                latitude: parseFloat(sortedPings[0].latitude),
+                longitude: parseFloat(sortedPings[0].longitude),
+                accuracy: sortedPings[0].accuracy ? parseFloat(sortedPings[0].accuracy) : undefined,
+                recorded_at: sortedPings[0].recorded_at
+              }
+            : null
+        }
+      }) || []
 
       setDevices(processedDevices)
 

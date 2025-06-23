@@ -110,18 +110,21 @@ export default function InteractiveMap({
         // Create custom div icons (no need for external image files)
         const getDeviceIcon = (deviceType: string, isSelected: boolean = false) => {
           const size = isSelected ? 40 : 32
-          const bgColor = isSelected ? 'bg-red-500' : getDeviceColor(deviceType)
-          const pulseClass = isSelected ? 'animate-pulse' : ''
+          const bgColor = getDeviceColor(deviceType)
           
           return L.divIcon({
-            html: `
-              <div class="relative">
-                <div class="w-${size/4} h-${size/4} ${bgColor} rounded-full border-2 border-white shadow-lg flex items-center justify-center ${pulseClass}">
-                  ${getDeviceIconSvg(deviceType)}
+                          html: `
+                <style>
+                  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+                  @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+                </style>
+                <div style="position: relative;">
+                  <div style="width: ${size}px; height: ${size}px; background-color: ${bgColor}; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; ${isSelected ? 'animation: pulse 2s infinite;' : ''}">
+                    ${getDeviceIconSvg(deviceType)}
+                  </div>
+                  ${isSelected ? '<div style="position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; background-color: #facc15; border-radius: 50%; border: 1px solid white; animation: ping 1s infinite;"></div>' : ''}
                 </div>
-                ${isSelected ? '<div class="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full border border-white animate-ping"></div>' : ''}
-              </div>
-            `,
+              `,
             className: 'custom-marker',
             iconSize: [size, size],
             iconAnchor: [size/2, size],
@@ -131,12 +134,12 @@ export default function InteractiveMap({
 
         const getDeviceColor = (deviceType: string) => {
           switch (deviceType) {
-            case 'gps_tag': return 'bg-blue-500'
-            case 'phone': return 'bg-green-500'
-            case 'tablet': return 'bg-purple-500'
-            case 'watch': return 'bg-orange-500'
-            case 'laptop': return 'bg-gray-600'
-            default: return 'bg-blue-500'
+            case 'gps_tag': return '#3b82f6'
+            case 'phone': return '#10b981'
+            case 'tablet': return '#8b5cf6'
+            case 'watch': return '#f97316'
+            case 'laptop': return '#4b5563'
+            default: return '#3b82f6'
           }
         }
 
