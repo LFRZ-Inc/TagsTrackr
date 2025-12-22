@@ -24,7 +24,9 @@ import {
   Settings,
   Bell,
   Shield,
-  Globe
+  Globe,
+  AlertCircle,
+  CheckCircle
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
