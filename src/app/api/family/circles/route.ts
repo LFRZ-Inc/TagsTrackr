@@ -320,7 +320,7 @@ export async function POST(request: NextRequest) {
           .from('circle_members')
           .insert({
             circle_id: adminCircle.id,
-            user_id: authenticatedUser.id,
+            user_id: targetUserId,
             role: 'admin',
             location_sharing_enabled: true
           })
@@ -339,7 +339,7 @@ export async function POST(request: NextRequest) {
             .from('circle_members')
             .select('*')
             .eq('circle_id', circle.id)
-            .eq('user_id', authenticatedUser.id)
+            .eq('user_id', targetUserId)
             .single()
 
           return NextResponse.json({

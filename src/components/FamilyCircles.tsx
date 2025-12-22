@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Users, Plus, Mail, Settings, Trash2, UserPlus, Map, X, Check } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import UnifiedFamilyMap from './UnifiedFamilyMap'
 
 interface Circle {
