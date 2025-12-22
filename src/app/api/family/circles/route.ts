@@ -191,7 +191,49 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create the circle
+    // Try using the database function first (bypasses RLS)
+    const { data: circleId, error: functionError } = await supabase.rpc('create_family_circle', {
+      circle_name: name.trim(),
+      circle_description: description?.trim() || null,
+      circle_color: color || '#3B82F6'
+    })
+
+    if (!functionError && circleId) {
+      // Fetch the created circle
+      const { data: circle, error: fetchError } = await supabase
+        .from('family_circles')
+        .select('*')
+        .eq('id', circleId)
+        .single()
+
+      if (fetchError || !circle) {
+        console.error('Error fetching created circle:', fetchError)
+        return NextResponse.json(
+          { error: 'Circle created but failed to fetch details' },
+          { status: 500 }
+        )
+      }
+
+      // Get the member record
+      const { data: member } = await supabase
+        .from('circle_members')
+        .select('*')
+        .eq('circle_id', circle.id)
+        .eq('user_id', user.id)
+        .single()
+
+      return NextResponse.json({
+        success: true,
+        circle: {
+          ...circle,
+          members: member ? [member] : []
+        },
+        message: 'Circle created successfully!'
+      })
+    }
+
+    // Fallback to direct insert if function doesn't exist or fails
+    console.log('Function not available, using direct insert')
     const { data: circle, error: circleError } = await supabase
       .from('family_circles')
       .insert({
