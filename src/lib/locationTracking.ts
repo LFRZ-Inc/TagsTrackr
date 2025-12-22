@@ -300,16 +300,28 @@ class LocationTrackingService {
   }
 
   // Request location permission
-  static async requestLocationPermission(): Promise<boolean> {
+  static async requestLocationPermission(deviceType?: string): Promise<boolean> {
     if (!navigator.geolocation) {
       return false
     }
+
+    // Optimize timeout for phones (GPS lock takes longer)
+    const isPhone = deviceType === 'phone' || 
+                   (typeof window !== 'undefined' && (
+                     navigator.userAgent.toLowerCase().includes('mobile') ||
+                     navigator.userAgent.toLowerCase().includes('android') ||
+                     navigator.userAgent.toLowerCase().includes('iphone') ||
+                     navigator.userAgent.toLowerCase().includes('ipod')
+                   ))
 
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         () => resolve(true),
         () => resolve(false),
-        { timeout: 5000 }
+        { 
+          timeout: isPhone ? 20000 : 10000, // Longer timeout for phones (GPS lock)
+          enableHighAccuracy: true // Always request high accuracy
+        }
       )
     })
   }

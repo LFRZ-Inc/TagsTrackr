@@ -183,14 +183,22 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
     }
   }, []);
 
-  const getLocationErrorMessage = (error: GeolocationPositionError): string => {
+  const getLocationErrorMessage = (error: GeolocationPositionError, deviceType?: string): string => {
+    const isPhone = deviceType === 'phone';
+    
     switch (error.code) {
       case error.PERMISSION_DENIED:
-        return 'Location access denied. Please enable location permissions in your browser settings.';
+        return isPhone 
+          ? 'Location access denied. Please enable location permissions in your browser settings and ensure GPS is enabled in your device settings.'
+          : 'Location access denied. Please enable location permissions in your browser settings.';
       case error.POSITION_UNAVAILABLE:
-        return 'Location information unavailable. Please check your GPS/WiFi connection.';
+        return isPhone
+          ? 'Location information unavailable. Please check your GPS is enabled and try going outdoors for better signal.'
+          : 'Location information unavailable. Please check your GPS/WiFi connection.';
       case error.TIMEOUT:
-        return 'Location request timed out. Please try again.';
+        return isPhone
+          ? 'GPS lock timed out. Try going outdoors or wait a bit longer for GPS signal.'
+          : 'Location request timed out. Please try again.';
       default:
         return 'An unknown location error occurred. Please try again.';
     }
@@ -237,14 +245,14 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
       },
       (error) => {
         console.error('Location tracking error:', error);
-        const message = getLocationErrorMessage(error);
+        const message = getLocationErrorMessage(error, currentDevice?.device_type);
         setErrorMessage(message);
         handleToggleSharing(false);
       },
       {
         enableHighAccuracy: true,
-        timeout: 30000,
-        maximumAge: 60000 // 1 minute
+        timeout: currentDevice?.device_type === 'phone' ? 20000 : 30000, // Longer timeout for phones (GPS lock)
+        maximumAge: currentDevice?.device_type === 'phone' ? 30000 : 60000 // Fresher data for phones
       }
     );
 

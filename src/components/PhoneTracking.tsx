@@ -183,14 +183,15 @@ export default function PhoneTracking({ onDeviceUpdate }: PhoneTrackingProps) {
 
   const startTracking = async () => {
     if (locationPermission === 'denied') {
-      setError('Location permission denied. Please enable location access in your browser settings.')
+      setError('Location permission denied. Please enable location access in your browser settings. For phones, also ensure GPS is enabled in your device settings.')
       return
     }
 
     if (locationPermission === 'prompt') {
-      const granted = await LocationTrackingService.requestLocationPermission()
+      // Request permission with phone-optimized settings
+      const granted = await LocationTrackingService.requestLocationPermission('phone')
       if (!granted) {
-        setError('Location permission is required for tracking')
+        setError('Location permission is required for tracking. For best results on phones, ensure GPS is enabled and try going outdoors.')
         return
       }
       setLocationPermission('granted')

@@ -314,12 +314,16 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
         return;
       }
 
-      // Request location permission
+      // Request location permission with device-optimized settings
+      const isPhone = selectedDeviceType === 'phone';
       const permission = await new Promise<boolean>((resolve) => {
         navigator.geolocation.getCurrentPosition(
           () => resolve(true),
           () => resolve(false),
-          { timeout: 5000 }
+          { 
+            timeout: isPhone ? 20000 : 10000, // Longer timeout for phones (GPS lock)
+            enableHighAccuracy: true // Always request high accuracy
+          }
         );
       });
 
