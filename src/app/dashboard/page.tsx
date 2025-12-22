@@ -501,6 +501,115 @@ export default function Dashboard() {
     }
   }
 
+  // Auto-update location using watchPosition
+  const startAutoTracking = async (device: PersonalDevice) => {
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by your browser')
+      return
+    }
+
+    // Check if this is the current device
+    const fingerprint = generateHardwareFingerprint()
+    const isCurrentDevice = device.hardware_fingerprint === fingerprint || device.id === currentDeviceId
+    
+    if (!isCurrentDevice) {
+      toast.error('Auto-tracking is only available for the device you are currently using')
+      return
+    }
+
+    if (!user || !device) {
+      toast.error('Unable to start auto-tracking')
+      return
+    }
+
+    // Stop any existing watch
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId)
+    }
+
+    const optimization = getDeviceOptimization(device.device_type as DeviceType)
+    const options = getGeolocationOptions(device.device_type as DeviceType)
+
+    toast.loading('Starting auto-tracking...', { id: 'auto-track-start' })
+
+    const id = navigator.geolocation.watchPosition(
+      async (position) => {
+        const { latitude, longitude, accuracy, speed, heading } = position.coords
+        
+        try {
+          // Save location ping
+          const { error: pingError } = await supabase
+            .from('location_pings')
+            .insert({
+              device_id: device.id,
+              user_id: user.id,
+              user_email: user.email || '',
+              latitude: latitude.toString(),
+              longitude: longitude.toString(),
+              accuracy: accuracy ? accuracy.toString() : null,
+              recorded_at: new Date().toISOString(),
+              timestamp: new Date().toISOString(),
+              is_background_ping: false,
+              location_source: 'gps',
+              speed: speed ? speed.toString() : null,
+              heading: heading ? heading.toString() : null
+            })
+
+          if (pingError) {
+            console.error('❌ [Dashboard] Error saving auto-track ping:', pingError)
+            return
+          }
+
+          // Update device
+          await supabase
+            .from('personal_devices')
+            .update({ 
+              last_ping_at: new Date().toISOString(),
+              location_sharing_active: true
+            })
+            .eq('id', device.id)
+
+          // Refresh data periodically (every 5 updates to avoid too many calls)
+          if (Math.random() < 0.2) {
+            fetchData()
+          }
+        } catch (err) {
+          console.error('❌ [Dashboard] Error in auto-track callback:', err)
+        }
+      },
+      (err) => {
+        console.error('❌ [Dashboard] Auto-track error:', err)
+        const errorMsg = getGeolocationErrorMessage(err.code, device.device_type as DeviceType)
+        toast.error(errorMsg, { id: 'auto-track-error' })
+        stopAutoTracking()
+      },
+      options
+    )
+
+    setWatchId(id)
+    setIsAutoTracking(true)
+    toast.dismiss('auto-track-start')
+    toast.success(`Auto-tracking started! Location will update every ${optimization.pingInterval / 1000}s`, { duration: 3000 })
+  }
+
+  const stopAutoTracking = () => {
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId)
+      setWatchId(null)
+      setIsAutoTracking(false)
+      toast.success('Auto-tracking stopped')
+    }
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId)
+      }
+    }
+  }, [watchId])
+
   const handleAddDevice = async () => {
     if (!deviceType || !deviceName.trim()) {
       toast.error('Please select a device type and enter a device name')
