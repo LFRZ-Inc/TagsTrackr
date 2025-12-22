@@ -562,7 +562,19 @@ export default function Dashboard() {
 
     // Check if this is the current device
     const fingerprint = generateHardwareFingerprint()
-    const isCurrentDevice = device.hardware_fingerprint === fingerprint || device.id === currentDeviceId
+    const fingerprintMatch = device.hardware_fingerprint === fingerprint
+    const deviceIdMatch = device.id === currentDeviceId
+    const isOwnedByUser = device.user_id === user?.id
+    // Allow if fingerprint matches, device ID matches, or if owned by user and no other device matches
+    const isCurrentDevice = fingerprintMatch || deviceIdMatch || (isOwnedByUser && !currentDeviceId)
+    
+    console.log('🔄 [Dashboard] Auto-tracking device check:', {
+      deviceName: device.device_name,
+      fingerprintMatch,
+      deviceIdMatch,
+      isOwnedByUser,
+      isCurrentDevice
+    })
     
     if (!isCurrentDevice) {
       toast.error('Auto-tracking is only available for the device you are currently using')
