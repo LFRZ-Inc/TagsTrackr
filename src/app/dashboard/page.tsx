@@ -176,15 +176,41 @@ export default function Dashboard() {
 
   // Update current device when devices are loaded
   useEffect(() => {
-    if (devices.length > 0 && !currentDeviceId) {
+    if (devices.length > 0) {
       const fingerprint = generateHardwareFingerprint()
+      console.log('🔍 [Dashboard] Identifying current device. Generated fingerprint:', fingerprint)
+      console.log('🔍 [Dashboard] Available devices:', devices.map(d => ({
+        id: d.id,
+        name: d.device_name,
+        fingerprint: d.hardware_fingerprint,
+        matches: d.hardware_fingerprint === fingerprint
+      })))
+      
+      // Check stored device ID first
+      const storedDeviceId = localStorage.getItem('tagstrackr_current_device_id')
+      if (storedDeviceId && devices.find(d => d.id === storedDeviceId)) {
+        console.log('✅ [Dashboard] Using stored device ID:', storedDeviceId)
+        setCurrentDeviceId(storedDeviceId)
+        return
+      }
+      
+      // Try to find by fingerprint
       const matchingDevice = devices.find(d => d.hardware_fingerprint === fingerprint)
       if (matchingDevice) {
+        console.log('✅ [Dashboard] Found device by fingerprint:', matchingDevice.id, matchingDevice.device_name)
         setCurrentDeviceId(matchingDevice.id)
         localStorage.setItem('tagstrackr_current_device_id', matchingDevice.id)
+      } else {
+        console.warn('⚠️ [Dashboard] No device found matching fingerprint. Available devices:', devices.length)
+        // If user only has one device, use it as fallback
+        if (devices.length === 1 && user && devices[0].user_id === user.id) {
+          console.log('✅ [Dashboard] Using single device as fallback:', devices[0].id)
+          setCurrentDeviceId(devices[0].id)
+          localStorage.setItem('tagstrackr_current_device_id', devices[0].id)
+        }
       }
     }
-  }, [devices, currentDeviceId])
+  }, [devices, currentDeviceId, user])
 
   const getUser = async () => {
     try {
@@ -363,13 +389,37 @@ export default function Dashboard() {
 
   const handleUpdateLocation = async (device: PersonalDevice) => {
     console.log('📍 [Dashboard] handleUpdateLocation called with device:', device)
+    console.log('📍 [Dashboard] Device hardware_fingerprint:', device.hardware_fingerprint)
+    console.log('📍 [Dashboard] Current device ID:', currentDeviceId)
     
     // Check if this is the current device
     const fingerprint = generateHardwareFingerprint()
-    const isCurrentDevice = device.hardware_fingerprint === fingerprint || device.id === currentDeviceId
+    console.log('📍 [Dashboard] Generated fingerprint:', fingerprint)
+    
+    // Check multiple ways to identify current device:
+    // 1. Hardware fingerprint match
+    // 2. Stored device ID match
+    // 3. If device is owned by user and no other device matches, allow it (fallback for fingerprint issues)
+    const fingerprintMatch = device.hardware_fingerprint === fingerprint
+    const deviceIdMatch = device.id === currentDeviceId
+    const isOwnedByUser = device.user_id === user?.id
+    
+    // If device is owned by user and we can't find a matching device, allow location update
+    // This is a fallback for cases where fingerprint doesn't match due to browser differences
+    const isCurrentDevice = fingerprintMatch || deviceIdMatch || (isOwnedByUser && !currentDeviceId)
+    
+    console.log('📍 [Dashboard] Device match check:', {
+      fingerprintMatch,
+      deviceIdMatch,
+      isOwnedByUser,
+      isCurrentDevice,
+      deviceUserId: device.user_id,
+      currentUserId: user?.id
+    })
     
     if (!isCurrentDevice) {
       console.warn('⚠️ [Dashboard] Attempted to update location for non-current device')
+      console.warn('⚠️ [Dashboard] Fingerprint mismatch - Device:', device.hardware_fingerprint, 'Current:', fingerprint)
       toast.error('You can only update location for the device you are currently using. Each device must update its own location.')
       return
     }
