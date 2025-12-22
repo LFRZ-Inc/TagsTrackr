@@ -308,8 +308,62 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Final fallback to direct insert if function doesn't exist or fails
-    console.log('Function not available or failed, using direct insert. Error:', functionError?.message)
+    // Final fallback: Try direct insert with admin client if available
+    if (adminClient) {
+      console.log('Trying direct insert with admin client')
+      const { data: adminCircle, error: adminInsertError } = await adminClient
+        .from('family_circles')
+        .insert({
+          name: name.trim(),
+          description: description?.trim() || null,
+          created_by: user.id,
+          color: color || '#3B82F6'
+        })
+        .select()
+        .single()
+
+      if (!adminInsertError && adminCircle) {
+        // Add creator as admin member
+        await adminClient
+          .from('circle_members')
+          .insert({
+            circle_id: adminCircle.id,
+            user_id: user.id,
+            role: 'admin',
+            location_sharing_enabled: true
+          })
+          .select()
+          .single()
+
+        // Fetch with regular client for RLS
+        const { data: circle } = await supabase
+          .from('family_circles')
+          .select('*')
+          .eq('id', adminCircle.id)
+          .single()
+
+        if (circle) {
+          const { data: member } = await supabase
+            .from('circle_members')
+            .select('*')
+            .eq('circle_id', circle.id)
+            .eq('user_id', user.id)
+            .single()
+
+          return NextResponse.json({
+            success: true,
+            circle: {
+              ...circle,
+              members: member ? [member] : []
+            },
+            message: 'Circle created successfully!'
+          })
+        }
+      }
+    }
+
+    // Last resort: Try direct insert with regular client
+    console.log('Trying direct insert with regular client. Previous errors:', functionError?.message)
     const { data: circle, error: circleError } = await supabase
       .from('family_circles')
       .insert({
@@ -329,7 +383,8 @@ export async function POST(request: NextRequest) {
           error: 'Failed to create circle',
           details: circleError.message,
           code: circleError.code,
-          hint: circleError.hint
+          hint: circleError.hint,
+          functionError: functionError?.message
         },
         { status: 500 }
       )
