@@ -19,7 +19,12 @@ import {
   Gift,
   ToggleLeft,
   ToggleRight,
-  X
+  X,
+  LogOut,
+  Settings,
+  Bell,
+  Shield,
+  Globe
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
@@ -486,8 +491,18 @@ export default function AccountPage() {
     { id: 'subscription', name: 'Subscription', icon: CreditCard },
     { id: 'credits', name: 'Ad Credits', icon: Gift },
     { id: 'sharing', name: 'Family Sharing', icon: User },
-    { id: 'settings', name: 'Settings', icon: MapPin }
+    { id: 'settings', name: 'Settings', icon: Settings }
   ]
+
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+      router.push('/login')
+    } catch (err: any) {
+      setError(err.message || 'Failed to log out')
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -506,8 +521,8 @@ export default function AccountPage() {
           <p className="text-gray-600 mt-2">Manage your TagsTrackr account and preferences</p>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* Sidebar */}
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
+          {/* Sidebar - Responsive */}
           <div className="lg:w-64">
             <nav className="space-y-1">
               {tabs.map((tab) => {
@@ -516,17 +531,28 @@ export default function AccountPage() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                       activeTab === tab.id
                         ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-500'
                         : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                     }`}
                   >
-                    <Icon className="h-5 w-5 mr-3" />
-                    {tab.name}
+                    <Icon className="h-4 w-4 sm:h-5 sm:w-5 mr-2 sm:mr-3 flex-shrink-0" />
+                    <span className="truncate">{tab.name}</span>
                   </button>
                 )
               })}
+              
+              {/* Logout Button in Sidebar - Desktop */}
+              <div className="hidden lg:block mt-4 pt-4 border-t border-gray-200">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-md text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                >
+                  <LogOut className="h-5 w-5 mr-3" />
+                  Sign Out
+                </button>
+              </div>
             </nav>
           </div>
 
@@ -576,9 +602,9 @@ export default function AccountPage() {
                   )}
                 </div>
 
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <button
                       onClick={() => setShowDevicePurchase(true)}
                       className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
@@ -812,9 +838,241 @@ export default function AccountPage() {
             )}
 
             {activeTab === 'settings' && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Settings</h2>
-                <p className="text-gray-600">Account settings would be here.</p>
+              <div className="space-y-6">
+                {/* Profile Settings */}
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                    <User className="h-5 w-5 mr-2" />
+                    Profile Information
+                  </h2>
+                  
+                  <form onSubmit={handleProfileUpdate} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Full Name
+                      </label>
+                      <input
+                        type="text"
+                        value={profileData.full_name}
+                        onChange={(e) => setProfileData({ ...profileData, full_name: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Enter your full name"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Email
+                      </label>
+                      <input
+                        type="email"
+                        value={user?.email || ''}
+                        disabled
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        value={profileData.phone}
+                        onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="+1 (555) 123-4567"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {saving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Password Settings */}
+                <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                  <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                    <Lock className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                    Change Password
+                  </h2>
+                  
+                  <form onSubmit={handlePasswordChange} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        New Password
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showNewPassword ? 'text' : 'password'}
+                          value={passwordData.newPassword}
+                          onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 pr-10"
+                          placeholder="Enter new password"
+                          minLength={6}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Confirm New Password
+                      </label>
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        value={passwordData.confirmPassword}
+                        onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Confirm new password"
+                        minLength={6}
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                    >
+                      <Lock className="h-4 w-4 mr-2" />
+                      {saving ? 'Updating...' : 'Update Password'}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Privacy & Security */}
+                <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                  <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                    <Shield className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                    Privacy & Security
+                  </h2>
+                  
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                      <div>
+                        <h3 className="font-medium text-gray-900">Location Sharing</h3>
+                        <p className="text-sm text-gray-600">Control who can see your location</p>
+                      </div>
+                      <Link
+                        href="/dashboard"
+                        className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                      >
+                        Manage
+                      </Link>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                      <div>
+                        <h3 className="font-medium text-gray-900">Family Sharing</h3>
+                        <p className="text-sm text-gray-600">Manage family circle access</p>
+                      </div>
+                      <Link
+                        href="/family"
+                        className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                      >
+                        Manage
+                      </Link>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                      <div>
+                        <h3 className="font-medium text-gray-900">Data & Privacy</h3>
+                        <p className="text-sm text-gray-600">View and manage your data</p>
+                      </div>
+                      <button
+                        onClick={() => alert('Data export feature coming soon')}
+                        className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                      >
+                        Export Data
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Notifications */}
+                <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                  <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                    <Bell className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                    Notifications
+                  </h2>
+                  
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                      <div>
+                        <h3 className="font-medium text-gray-900">Email Notifications</h3>
+                        <p className="text-sm text-gray-600">Receive updates via email</p>
+                      </div>
+                      <button className="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                        Configure
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                      <div>
+                        <h3 className="font-medium text-gray-900">Location Alerts</h3>
+                        <p className="text-sm text-gray-600">Get notified about device movements</p>
+                      </div>
+                      <button className="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                        Configure
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Danger Zone */}
+                <div className="bg-white rounded-lg shadow p-4 sm:p-6 border-2 border-red-200">
+                  <h2 className="text-lg sm:text-xl font-semibold text-red-900 mb-4">Danger Zone</h2>
+                  
+                  <div className="space-y-4">
+                    <div className="p-4 bg-red-50 rounded-lg">
+                      <h3 className="font-medium text-red-900 mb-2">Delete Account</h3>
+                      <p className="text-sm text-red-800 mb-4">
+                        Once you delete your account, there is no going back. Please be certain.
+                      </p>
+                      <button
+                        onClick={handleDeleteAccount}
+                        disabled={saving}
+                        className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete My Account
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Logout */}
+                <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                  <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                    <LogOut className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                    Sign Out
+                  </h2>
+                  
+                  <p className="text-sm text-gray-600 mb-4">
+                    Sign out of your account. You can sign back in anytime.
+                  </p>
+                  
+                  <button
+                    onClick={handleLogout}
+                    className="w-full sm:w-auto bg-gray-600 text-white px-6 py-2 rounded-md hover:bg-gray-700 flex items-center justify-center"
+                  >
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Sign Out
+                  </button>
+                </div>
               </div>
             )}
           </div>
