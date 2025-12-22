@@ -109,8 +109,8 @@ export default function UnifiedFamilyMap({
       if (locationsWithCoords.length > 0) {
         const lats = locationsWithCoords.map((m: CircleMember) => m.current_location!.latitude)
         const lngs = locationsWithCoords.map((m: CircleMember) => m.current_location!.longitude)
-        const avgLat = lats.reduce((a, b) => a + b, 0) / lats.length
-        const avgLng = lngs.reduce((a, b) => a + b, 0) / lngs.length
+        const avgLat = lats.reduce((a: number, b: number) => a + b, 0) / lats.length
+        const avgLng = lngs.reduce((a: number, b: number) => a + b, 0) / lngs.length
         setMapCenter([avgLat, avgLng])
         setMapZoom(locationsWithCoords.length === 1 ? 15 : 12)
       }
