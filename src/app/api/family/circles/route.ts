@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
     }
     
     // If no session, try getUser
-    let user = session?.user
+    let user = session?.user || undefined
     if (!user) {
       const { data: { user: fetchedUser }, error: authError } = await supabase.auth.getUser()
       if (authError) {
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
           details: authError.message 
         }, { status: 401 })
       }
-      user = fetchedUser
+      user = fetchedUser || undefined
     }
 
     if (!user) {
