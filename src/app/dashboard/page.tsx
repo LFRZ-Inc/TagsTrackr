@@ -65,6 +65,30 @@ interface DashboardType {
   recommended?: boolean
 }
 
+// Generate hardware fingerprint to identify current device
+const generateHardwareFingerprint = (): string => {
+  if (typeof window === 'undefined') return 'unknown';
+  
+  const hardwareIdentifiers = [
+    `${screen.width}x${screen.height}`,
+    `${screen.availWidth}x${screen.availHeight}`,
+    navigator.hardwareConcurrency || 'unknown',
+    navigator.platform,
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+    navigator.language,
+    (navigator as any).deviceMemory || 'unknown'
+  ].join('|');
+  
+  let hash = 0;
+  for (let i = 0; i < hardwareIdentifiers.length; i++) {
+    const char = hardwareIdentifiers.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  
+  return Math.abs(hash).toString(36);
+};
+
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null)
   const [devices, setDevices] = useState<PersonalDevice[]>([])
@@ -72,6 +96,9 @@ export default function Dashboard() {
   const [selectedDevice, setSelectedDevice] = useState<PersonalDevice | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null)
+  const [isAutoTracking, setIsAutoTracking] = useState(false)
+  const [watchId, setWatchId] = useState<number | null>(null)
   
   // Modal states
   const [showAddDeviceModal, setShowAddDeviceModal] = useState(false)
@@ -112,6 +139,31 @@ export default function Dashboard() {
 
   useEffect(() => {
     getUser()
+    
+    // Identify current device by hardware fingerprint
+    const identifyCurrentDevice = () => {
+      if (typeof window === 'undefined') return
+      
+      const fingerprint = generateHardwareFingerprint()
+      const storedDeviceId = localStorage.getItem('tagstrackr_current_device_id')
+      
+      // Check if we have a stored device ID
+      if (storedDeviceId) {
+        setCurrentDeviceId(storedDeviceId)
+        return
+      }
+      
+      // Try to find device by fingerprint (will be set after devices are loaded)
+      if (devices.length > 0) {
+        const matchingDevice = devices.find(d => d.hardware_fingerprint === fingerprint)
+        if (matchingDevice) {
+          setCurrentDeviceId(matchingDevice.id)
+          localStorage.setItem('tagstrackr_current_device_id', matchingDevice.id)
+        }
+      }
+    }
+    
+    identifyCurrentDevice()
   }, [])
 
   useEffect(() => {
@@ -119,6 +171,18 @@ export default function Dashboard() {
       fetchData()
     }
   }, [user])
+
+  // Update current device when devices are loaded
+  useEffect(() => {
+    if (devices.length > 0 && !currentDeviceId) {
+      const fingerprint = generateHardwareFingerprint()
+      const matchingDevice = devices.find(d => d.hardware_fingerprint === fingerprint)
+      if (matchingDevice) {
+        setCurrentDeviceId(matchingDevice.id)
+        localStorage.setItem('tagstrackr_current_device_id', matchingDevice.id)
+      }
+    }
+  }, [devices, currentDeviceId])
 
   const getUser = async () => {
     try {
@@ -742,29 +806,83 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      {/* Update Location Button - Full width on mobile */}
-                      <div className="mt-2 sm:mt-3" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={async (e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            console.log('🔘 [Dashboard] Button clicked for device:', device.device_name, device.id)
-                            console.log('🔘 [Dashboard] User:', user?.email, 'Navigator:', typeof navigator !== 'undefined' ? 'available' : 'not available')
+                      {/* Update Location Button - Only show for current device */}
+                      {(() => {
+                        const fingerprint = generateHardwareFingerprint()
+                        const isCurrentDevice = device.hardware_fingerprint === fingerprint || device.id === currentDeviceId
+                        const isThisDeviceTracking = isAutoTracking && device.id === currentDeviceId
+                        
+                        if (!isCurrentDevice) {
+                          return (
+                            <div className="mt-2 sm:mt-3" onClick={(e) => e.stopPropagation()}>
+                              <div className="w-full bg-gray-100 text-gray-500 text-sm py-2 px-4 rounded-lg flex items-center justify-center space-x-2 cursor-not-allowed">
+                                <span>📍</span>
+                                <span>Use this device to update location</span>
+                              </div>
+                              <p className="text-xs text-gray-400 mt-1 text-center">
+                                Each device must update its own location
+                              </p>
+                            </div>
+                          )
+                        }
+                        
+                        return (
+                          <div className="mt-2 sm:mt-3 space-y-2" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                try {
+                                  await handleUpdateLocation(device)
+                                } catch (err: any) {
+                                  console.error('❌ [Dashboard] Unhandled error in handleUpdateLocation:', err)
+                                  toast.error(`Failed to update location: ${err?.message || 'Unknown error'}`)
+                                }
+                              }}
+                              className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <span>📍</span>
+                              <span>{device.current_location ? 'Update Location' : 'Get Location'}</span>
+                            </button>
                             
-                            try {
-                              await handleUpdateLocation(device)
-                            } catch (err: any) {
-                              console.error('❌ [Dashboard] Unhandled error in handleUpdateLocation:', err)
-                              toast.error(`Failed to update location: ${err?.message || 'Unknown error'}`)
-                            }
-                          }}
-                          className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <span>📍</span>
-                          <span>{device.current_location ? 'Update Location' : 'Get Location'}</span>
-                        </button>
-                      </div>
+                            {/* Auto-Tracking Toggle */}
+                            {!isThisDeviceTracking ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  startAutoTracking(device)
+                                }}
+                                className="w-full bg-green-600 hover:bg-green-700 text-white text-sm py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2"
+                              >
+                                <span>🔄</span>
+                                <span>Start Auto-Tracking</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  stopAutoTracking()
+                                }}
+                                className="w-full bg-red-600 hover:bg-red-700 text-white text-sm py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2"
+                              >
+                                <span>⏹️</span>
+                                <span>Stop Auto-Tracking</span>
+                              </button>
+                            )}
+                            
+                            {isThisDeviceTracking && (
+                              <p className="text-xs text-green-600 text-center">
+                                🔄 Auto-tracking active - location updates automatically
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   ))}
                 </div>
