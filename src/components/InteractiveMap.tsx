@@ -367,28 +367,29 @@ export default function InteractiveMap({
             </div>
           </div>
 
-          {/* Refresh Button */}
+          {/* Refresh Button - Responsive */}
           {onRefresh && (
-            <div className="bg-white rounded-lg shadow-lg p-2">
+            <div className="bg-white rounded-lg shadow-lg p-1.5 sm:p-2">
               <button
                 onClick={handleRefresh}
                 disabled={refreshing}
-                className="p-2 rounded text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+                className="p-1.5 sm:p-2 rounded text-gray-600 hover:bg-gray-100 disabled:opacity-50"
                 title="Refresh Device Locations"
               >
-                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-3 w-3 sm:h-4 sm:w-4 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
             </div>
           )}
         </div>
       )}
 
-      {/* Real-time Updates Indicator */}
+      {/* Real-time Updates Indicator - Responsive */}
       {realTimeUpdates && (
-        <div className="absolute top-4 right-4 z-[1000]">
-          <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm flex items-center">
-            <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-            Live Updates
+        <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-[400]">
+          <div className="bg-green-100 text-green-800 px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm flex items-center">
+            <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full mr-1.5 sm:mr-2 animate-pulse"></div>
+            <span className="hidden sm:inline">Live Updates</span>
+            <span className="sm:hidden">Live</span>
           </div>
         </div>
       )}
