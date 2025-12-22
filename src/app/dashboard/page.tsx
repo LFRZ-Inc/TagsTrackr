@@ -10,6 +10,7 @@ import { toast } from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import { getDeviceOptimization, getGeolocationOptions, getGeolocationErrorMessage, type DeviceType } from '@/lib/deviceOptimization'
+import { TripTracker, type TripWaypoint } from '@/lib/tripTracking'
 
 // Types
 interface PersonalDevice {
@@ -99,6 +100,7 @@ export default function Dashboard() {
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null)
   const [isAutoTracking, setIsAutoTracking] = useState(false)
   const [watchId, setWatchId] = useState<number | null>(null)
+  const [tripTracker, setTripTracker] = useState<TripTracker | null>(null)
   
   // Modal states
   const [showAddDeviceModal, setShowAddDeviceModal] = useState(false)
@@ -532,11 +534,36 @@ export default function Dashboard() {
 
     toast.loading('Starting auto-tracking...', { id: 'auto-track-start' })
 
+    // Initialize trip tracker
+    const tracker = new TripTracker()
+    setTripTracker(tracker)
+
     const id = navigator.geolocation.watchPosition(
       async (position) => {
         const { latitude, longitude, accuracy, speed, heading } = position.coords
         
         try {
+          // Convert speed from m/s to km/h if available
+          const speedKmh = speed !== null && speed !== undefined ? speed * 3.6 : undefined
+          
+          // Calculate acceleration (if we have previous position data)
+          // For now, we'll use a simple approximation - in production, use device motion API
+          const acceleration = undefined // Will be calculated by TripTracker from speed changes
+          
+          // Create waypoint for trip tracking
+          const waypoint: TripWaypoint = {
+            latitude,
+            longitude,
+            accuracy: accuracy || undefined,
+            speed: speedKmh,
+            heading: heading || undefined,
+            acceleration,
+            timestamp: new Date(),
+          }
+
+          // Process waypoint for trip detection and driving behavior
+          const tripResults = tracker.processLocationUpdate(waypoint)
+          
           // Save location ping
           const { error: pingError } = await supabase
             .from('location_pings')
@@ -551,13 +578,170 @@ export default function Dashboard() {
               timestamp: new Date().toISOString(),
               is_background_ping: false,
               location_source: 'gps',
-              speed: speed ? speed.toString() : null,
+              speed: speedKmh ? speedKmh.toString() : null,
               heading: heading ? heading.toString() : null
             })
 
           if (pingError) {
             console.error('❌ [Dashboard] Error saving auto-track ping:', pingError)
             return
+          }
+
+          // Handle trip start
+          if (tripResults.tripStarted) {
+            const currentTrip = tracker.getCurrentTrip()
+            if (currentTrip) {
+              currentTrip.deviceId = device.id
+              
+              // Create trip in database
+              const { data: tripData, error: tripError } = await supabase
+                .from('trips')
+                .insert({
+                  user_id: user.id,
+                  device_id: device.id,
+                  start_location_lat: currentTrip.startLocation.lat,
+                  start_location_lng: currentTrip.startLocation.lng,
+                  started_at: currentTrip.startedAt.toISOString(),
+                  is_complete: false,
+                  trip_type: 'driving',
+                })
+                .select()
+                .single()
+
+              if (!tripError && tripData) {
+                currentTrip.tripId = tripData.id
+                toast.success('🚗 Trip started! Tracking your journey...', { duration: 3000 })
+              }
+            }
+          }
+
+          // Handle trip end
+          if (tripResults.tripEnded) {
+            const completedTrip = tracker.endCurrentTrip(waypoint)
+            if (completedTrip && completedTrip.tripId) {
+              const stats = tracker.calculateTripStats(completedTrip)
+              
+              // Update trip in database
+              await supabase
+                .from('trips')
+                .update({
+                  end_location_lat: completedTrip.endLocation?.lat,
+                  end_location_lng: completedTrip.endLocation?.lng,
+                  ended_at: completedTrip.endedAt?.toISOString(),
+                  duration_seconds: stats.totalDrivingTime,
+                  total_distance_meters: stats.totalDistance,
+                  average_speed_kmh: stats.averageSpeed,
+                  max_speed_kmh: stats.maxSpeed,
+                  total_driving_time_seconds: stats.totalDrivingTime,
+                  safety_score: stats.safetyScore,
+                  hard_braking_count: completedTrip.events.filter(e => e.eventType === 'hard_braking').length,
+                  rapid_acceleration_count: completedTrip.events.filter(e => e.eventType === 'rapid_acceleration').length,
+                  speeding_count: completedTrip.events.filter(e => e.eventType === 'speeding').length,
+                  harsh_turning_count: completedTrip.events.filter(e => e.eventType === 'harsh_turning').length,
+                  is_complete: true,
+                })
+                .eq('id', completedTrip.tripId)
+
+              // Save waypoints
+              if (completedTrip.waypoints.length > 0) {
+                await supabase
+                  .from('trip_waypoints')
+                  .insert(
+                    completedTrip.waypoints.map((wp, idx) => ({
+                      trip_id: completedTrip.tripId,
+                      latitude: wp.latitude,
+                      longitude: wp.longitude,
+                      accuracy: wp.accuracy,
+                      altitude: wp.altitude,
+                      speed_kmh: wp.speed,
+                      heading: wp.heading,
+                      acceleration_ms2: wp.acceleration,
+                      recorded_at: wp.timestamp.toISOString(),
+                      sequence_number: idx,
+                    }))
+                  )
+              }
+
+              // Save driving events
+              if (completedTrip.events.length > 0) {
+                await supabase
+                  .from('driving_events')
+                  .insert(
+                    completedTrip.events.map(event => ({
+                      trip_id: completedTrip.tripId,
+                      user_id: user.id,
+                      device_id: device.id,
+                      event_type: event.eventType,
+                      severity: event.severity,
+                      latitude: event.latitude,
+                      longitude: event.longitude,
+                      speed_kmh: event.speed,
+                      acceleration_ms2: event.acceleration,
+                      g_force: event.gForce,
+                      description: event.description,
+                      metadata: event.metadata || {},
+                      recorded_at: new Date().toISOString(),
+                    }))
+                  )
+              }
+
+              toast.success(`✅ Trip completed! Safety score: ${stats.safetyScore}/100`, { duration: 5000 })
+            }
+          }
+
+          // Handle driving events in real-time
+          if (tripResults.events && tripResults.events.length > 0) {
+            const currentTrip = tracker.getCurrentTrip()
+            if (currentTrip && currentTrip.tripId) {
+              // Save events immediately
+              await supabase
+                .from('driving_events')
+                .insert(
+                  tripResults.events.map(event => ({
+                    trip_id: currentTrip.tripId,
+                    user_id: user.id,
+                    device_id: device.id,
+                    event_type: event.eventType,
+                    severity: event.severity,
+                    latitude: event.latitude,
+                    longitude: event.longitude,
+                    speed_kmh: event.speed,
+                    acceleration_ms2: event.acceleration,
+                    g_force: event.gForce,
+                    description: event.description,
+                    metadata: event.metadata || {},
+                    recorded_at: new Date().toISOString(),
+                  }))
+                )
+
+              // Show toast for critical/high severity events
+              tripResults.events.forEach(event => {
+                if (event.severity === 'critical' || event.severity === 'high') {
+                  toast.error(`⚠️ ${event.description}`, { duration: 5000 })
+                }
+              })
+            }
+          }
+
+          // Save waypoint if needed
+          if (tripResults.shouldRecordWaypoint) {
+            const currentTrip = tracker.getCurrentTrip()
+            if (currentTrip && currentTrip.tripId) {
+              await supabase
+                .from('trip_waypoints')
+                .insert({
+                  trip_id: currentTrip.tripId,
+                  latitude: waypoint.latitude,
+                  longitude: waypoint.longitude,
+                  accuracy: waypoint.accuracy,
+                  altitude: waypoint.altitude,
+                  speed_kmh: waypoint.speed,
+                  heading: waypoint.heading,
+                  acceleration_ms2: waypoint.acceleration,
+                  recorded_at: waypoint.timestamp.toISOString(),
+                  sequence_number: currentTrip.waypoints.length - 1,
+                })
+            }
           }
 
           // Update device
@@ -592,11 +776,45 @@ export default function Dashboard() {
     toast.success(`Auto-tracking started! Location will update every ${optimization.pingInterval / 1000}s`, { duration: 3000 })
   }
 
-  const stopAutoTracking = () => {
+  const stopAutoTracking = async () => {
     if (watchId !== null) {
       navigator.geolocation.clearWatch(watchId)
       setWatchId(null)
       setIsAutoTracking(false)
+      
+      // End any active trip
+      if (tripTracker) {
+        const activeTrip = tripTracker.getCurrentTrip()
+        if (activeTrip && activeTrip.isActive) {
+          const completedTrip = tripTracker.endCurrentTrip()
+          if (completedTrip && completedTrip.tripId && user) {
+            const stats = tripTracker.calculateTripStats(completedTrip)
+            
+            // Update trip in database
+            await supabase
+              .from('trips')
+              .update({
+                end_location_lat: completedTrip.endLocation?.lat,
+                end_location_lng: completedTrip.endLocation?.lng,
+                ended_at: completedTrip.endedAt?.toISOString(),
+                duration_seconds: stats.totalDrivingTime,
+                total_distance_meters: stats.totalDistance,
+                average_speed_kmh: stats.averageSpeed,
+                max_speed_kmh: stats.maxSpeed,
+                total_driving_time_seconds: stats.totalDrivingTime,
+                safety_score: stats.safetyScore,
+                hard_braking_count: completedTrip.events.filter(e => e.eventType === 'hard_braking').length,
+                rapid_acceleration_count: completedTrip.events.filter(e => e.eventType === 'rapid_acceleration').length,
+                speeding_count: completedTrip.events.filter(e => e.eventType === 'speeding').length,
+                harsh_turning_count: completedTrip.events.filter(e => e.eventType === 'harsh_turning').length,
+                is_complete: true,
+              })
+              .eq('id', completedTrip.tripId)
+          }
+        }
+      }
+      
+      setTripTracker(null)
       toast.success('Auto-tracking stopped')
     }
   }
