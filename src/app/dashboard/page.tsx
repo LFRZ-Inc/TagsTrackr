@@ -261,10 +261,16 @@ export default function Dashboard() {
       setLoading(true)
       setError(null)
 
-      // Fetch personal devices first
+      // Fetch personal devices for current user only
+      if (!user) {
+        console.error('❌ [Dashboard] No user found when fetching data')
+        return
+      }
+
       const { data: devicesData, error: devicesError } = await supabase
         .from('personal_devices')
         .select('*')
+        .eq('user_id', user.id) // CRITICAL: Only fetch devices owned by current user
         .eq('is_active', true)
         .order('created_at', { ascending: false })
 
