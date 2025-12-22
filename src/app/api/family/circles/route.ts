@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
         .from('circle_members')
         .select('*')
         .eq('circle_id', circle.id)
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .single()
 
       return NextResponse.json({
@@ -305,12 +305,12 @@ export async function POST(request: NextRequest) {
       console.log('Trying direct insert with admin client')
       const { data: adminCircle, error: adminInsertError } = await adminClient
         .from('family_circles')
-        .insert({
-          name: name.trim(),
-          description: description?.trim() || null,
-          created_by: user.id,
-          color: color || '#3B82F6'
-        })
+          .insert({
+            name: name.trim(),
+            description: description?.trim() || null,
+            created_by: targetUserId,
+            color: color || '#3B82F6'
+          })
         .select()
         .single()
 
