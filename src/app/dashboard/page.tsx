@@ -362,6 +362,16 @@ export default function Dashboard() {
   const handleUpdateLocation = async (device: PersonalDevice) => {
     console.log('📍 [Dashboard] handleUpdateLocation called with device:', device)
     
+    // Check if this is the current device
+    const fingerprint = generateHardwareFingerprint()
+    const isCurrentDevice = device.hardware_fingerprint === fingerprint || device.id === currentDeviceId
+    
+    if (!isCurrentDevice) {
+      console.warn('⚠️ [Dashboard] Attempted to update location for non-current device')
+      toast.error('You can only update location for the device you are currently using. Each device must update its own location.')
+      return
+    }
+    
     if (!navigator.geolocation) {
       console.error('❌ [Dashboard] Geolocation not supported')
       toast.error('Geolocation is not supported by your browser')
