@@ -35,6 +35,41 @@ export async function GET(request: NextRequest) {
       const { error } = await supabase.auth.exchangeCodeForSession(code)
       
       if (!error) {
+        // Get user and create/update profile with unlimited access
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          // Check if profile exists
+          const { data: existingProfile } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', user.id)
+            .single()
+
+          if (!existingProfile) {
+            // Create profile with unlimited access
+            await supabase
+              .from('users')
+              .insert({
+                id: user.id,
+                email: user.email || '',
+                full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+                is_premium: true,
+                device_limit: 999,
+                current_devices: 0,
+                owned_tags: 0
+              })
+          } else {
+            // Ensure unlimited access
+            await supabase
+              .from('users')
+              .update({
+                is_premium: true,
+                device_limit: 999
+              })
+              .eq('id', user.id)
+          }
+        }
+        
         // Email confirmed successfully, redirect to dashboard
         return NextResponse.redirect(`${origin}${next}`)
       } else {

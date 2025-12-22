@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { MapPin, Clock, Route, Download, Share2, TrendingUp, Activity } from 'lucide-react'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 
 interface LocationPoint {
   latitude: number
@@ -36,61 +37,81 @@ export default function LocationHistory({
     lastUpdate: null as string | null
   })
 
-  // Fetch location history from server
+  const supabase = createClientComponentClient()
+
+  // Fetch location history from database
   const fetchHistory = async () => {
     setLoading(true)
     try {
-      // This would typically fetch from your API
-      // For now, we'll simulate with local storage or generate sample data
-      const mockHistory = generateMockHistory(deviceId, timeRange)
-      setHistory(mockHistory)
-      calculateStats(mockHistory)
-      onHistoryUpdate?.(mockHistory)
+      // Calculate time range
+      const now = new Date()
+      const rangeHours = {
+        '1h': 1,
+        '6h': 6,
+        '24h': 24,
+        '7d': 168,
+        '30d': 720
+      }[timeRange] || 24
+
+      const startTime = new Date(now.getTime() - rangeHours * 60 * 60 * 1000)
+
+      // Fetch real location data from location_pings table
+      const { data, error } = await supabase
+        .from('location_pings')
+        .select('latitude, longitude, accuracy, recorded_at, speed, heading')
+        .eq('device_id', deviceId)
+        .gte('recorded_at', startTime.toISOString())
+        .order('recorded_at', { ascending: true })
+        .limit(maxPoints)
+
+      if (error) {
+        console.error('Error fetching location history:', error)
+        // Fallback: try alternative table structure
+        const { data: altData, error: altError } = await supabase
+          .from('gps_pings')
+          .select('latitude, longitude, accuracy, timestamp, speed, heading')
+          .gte('timestamp', startTime.toISOString())
+          .order('timestamp', { ascending: true })
+          .limit(maxPoints)
+
+        if (altError) {
+          throw altError
+        }
+
+        const points: LocationPoint[] = (altData || []).map((ping: any) => ({
+          latitude: parseFloat(ping.latitude),
+          longitude: parseFloat(ping.longitude),
+          timestamp: ping.timestamp || ping.created_at,
+          accuracy: ping.accuracy ? parseFloat(ping.accuracy) : undefined,
+          speed: ping.speed ? parseFloat(ping.speed) : undefined,
+          heading: ping.heading ? parseFloat(ping.heading) : undefined
+        }))
+
+        setHistory(points)
+        calculateStats(points)
+        onHistoryUpdate?.(points)
+        return
+      }
+
+      // Convert database records to LocationPoint format
+      const points: LocationPoint[] = (data || []).map((ping: any) => ({
+        latitude: parseFloat(ping.latitude),
+        longitude: parseFloat(ping.longitude),
+        timestamp: ping.recorded_at || ping.timestamp || ping.created_at,
+        accuracy: ping.accuracy ? parseFloat(ping.accuracy) : undefined,
+        speed: ping.speed ? parseFloat(ping.speed) : undefined,
+        heading: ping.heading ? parseFloat(ping.heading) : undefined
+      }))
+
+      setHistory(points)
+      calculateStats(points)
+      onHistoryUpdate?.(points)
     } catch (error) {
       console.error('Error fetching location history:', error)
+      setHistory([])
     } finally {
       setLoading(false)
     }
-  }
-
-  // Generate mock history for demonstration
-  const generateMockHistory = (deviceId: string, range: string): LocationPoint[] => {
-    const now = new Date()
-    const points: LocationPoint[] = []
-    
-    // Determine time range in hours
-    const rangeHours = {
-      '1h': 1,
-      '6h': 6,
-      '24h': 24,
-      '7d': 168,
-      '30d': 720
-    }[range] || 24
-
-    const intervalMinutes = Math.max(5, rangeHours * 60 / maxPoints)
-    
-    // Start from a base location (NYC for demo)
-    let lat = 40.7589 + (Math.random() - 0.5) * 0.01
-    let lng = -73.9851 + (Math.random() - 0.5) * 0.01
-
-    for (let i = 0; i < Math.min(maxPoints, rangeHours * 60 / intervalMinutes); i++) {
-      const timestamp = new Date(now.getTime() - i * intervalMinutes * 60000)
-      
-      // Simulate movement
-      lat += (Math.random() - 0.5) * 0.001
-      lng += (Math.random() - 0.5) * 0.001
-      
-      points.unshift({
-        latitude: lat,
-        longitude: lng,
-        timestamp: timestamp.toISOString(),
-        accuracy: Math.random() * 20 + 5,
-        speed: Math.random() * 60, // km/h
-        heading: Math.random() * 360
-      })
-    }
-
-    return points
   }
 
   // Calculate movement statistics
@@ -197,7 +218,9 @@ export default function LocationHistory({
   }
 
   useEffect(() => {
-    fetchHistory()
+    if (deviceId) {
+      fetchHistory()
+    }
   }, [deviceId, timeRange])
 
   const formatDistance = (km: number) => {
@@ -229,7 +252,10 @@ export default function LocationHistory({
         <div className="flex items-center space-x-2">
           <select
             value={timeRange}
-            onChange={(e) => fetchHistory()}
+            onChange={(e) => {
+              const newRange = e.target.value as '1h' | '6h' | '24h' | '7d' | '30d'
+              fetchHistory()
+            }}
             className="text-sm border border-gray-300 rounded px-2 py-1"
           >
             <option value="1h">Last Hour</option>

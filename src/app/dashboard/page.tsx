@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { User } from '@supabase/auth-helpers-nextjs'
-import { redirect } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import LocationPinger from '@/components/LocationPinger'
 import InteractiveMap from '@/components/InteractiveMap'
 import AlertsManager from '@/components/AlertsManager'
 import { toast } from 'react-hot-toast'
+import { supabase } from '@/lib/supabase'
+import type { User } from '@supabase/supabase-js'
 
 // Types
 interface PersonalDevice {
@@ -81,7 +81,7 @@ export default function Dashboard() {
   const [deviceName, setDeviceName] = useState('')
   const [isRegistering, setIsRegistering] = useState(false)
 
-  const supabase = createClientComponentClient()
+  const router = useRouter()
 
   // Dashboard type options
   const dashboardTypes: DashboardType[] = [
@@ -111,15 +111,55 @@ export default function Dashboard() {
 
   useEffect(() => {
     getUser()
-    fetchData()
   }, [])
 
-  const getUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+  useEffect(() => {
     if (user) {
-      setUser(user)
-    } else {
-      redirect('/login')
+      fetchData()
+    }
+  }, [user])
+
+  const getUser = async () => {
+    try {
+      // First check session (faster, doesn't require network call)
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session?.user) {
+        console.log('✅ Session found, user:', session.user.id)
+        setUser(session.user)
+        setLoading(false)
+        return
+      }
+
+      // If no session, try getUser (validates with server)
+      console.log('⚠️ No session, checking with server...')
+      const { data: { user }, error } = await supabase.auth.getUser()
+      
+      if (error) {
+        console.error('❌ Auth error:', error)
+        // Don't redirect immediately, might be a temporary issue
+        setError('Authentication error. Please try refreshing the page.')
+        setLoading(false)
+        // Only redirect after a delay to avoid race conditions
+        setTimeout(() => {
+          router.push('/login')
+        }, 2000)
+        return
+      }
+
+      if (user) {
+        console.log('✅ User found:', user.id)
+        setUser(user)
+        setLoading(false)
+      } else {
+        console.log('❌ No user found, redirecting to login')
+        setLoading(false)
+        router.push('/login')
+      }
+    } catch (err) {
+      console.error('💥 Error getting user:', err)
+      setError('Failed to verify authentication. Please try again.')
+      setLoading(false)
     }
   }
 
@@ -167,29 +207,50 @@ export default function Dashboard() {
         // Find latest location for this device
         const deviceLocation = latestLocations.find(loc => loc.device_id === device.id)
         
+        let currentLocation = null
+        if (deviceLocation) {
+          const lat = typeof deviceLocation.latitude === 'string' 
+            ? parseFloat(deviceLocation.latitude) 
+            : Number(deviceLocation.latitude)
+          const lng = typeof deviceLocation.longitude === 'string'
+            ? parseFloat(deviceLocation.longitude)
+            : Number(deviceLocation.longitude)
+          
+          // Validate coordinates
+          if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+            currentLocation = {
+              latitude: lat,
+              longitude: lng,
+              accuracy: deviceLocation.accuracy 
+                ? (typeof deviceLocation.accuracy === 'string' 
+                    ? parseFloat(deviceLocation.accuracy) 
+                    : Number(deviceLocation.accuracy))
+                : undefined,
+              recorded_at: deviceLocation.recorded_at
+            }
+          } else {
+            console.warn(`Invalid coordinates for device ${device.device_name}:`, { lat, lng })
+          }
+        }
+        
         const processedDevice = {
           ...device,
-          current_location: deviceLocation 
-            ? {
-                latitude: parseFloat(deviceLocation.latitude),
-                longitude: parseFloat(deviceLocation.longitude),
-                accuracy: deviceLocation.accuracy ? parseFloat(deviceLocation.accuracy) : undefined,
-                recorded_at: deviceLocation.recorded_at
-              }
-            : null
+          current_location: currentLocation
         }
         
         // Debug logging
-        console.log(`Device ${device.device_name}:`, {
+        console.log(`📍 Device ${device.device_name}:`, {
           id: device.id,
-          has_location: !!deviceLocation,
-          location: processedDevice.current_location
+          has_location: !!currentLocation,
+          location: currentLocation,
+          raw_location_data: deviceLocation
         })
         
         return processedDevice
       }) || []
       
-      console.log('Processed devices for map:', processedDevices)
+      console.log('✅ [Dashboard] Processed devices for map:', processedDevices)
+      console.log('✅ [Dashboard] Devices with locations:', processedDevices.filter(d => d.current_location))
 
       setDevices(processedDevices)
 
@@ -211,61 +272,123 @@ export default function Dashboard() {
   }
 
   // Convert PersonalDevice to Device for InteractiveMap compatibility
-  const convertToDevice = (device: PersonalDevice): Device => ({
-    id: device.id,
-    tag_id: device.id, // Use device id as tag_id for compatibility
-    device_name: device.device_name,
-    device_type: device.device_type,
-    device_model: device.device_model,
-    description: `${device.device_type} - ${device.device_model || 'Unknown model'}`,
-    is_active: device.is_active && device.location_sharing_active,
-    battery_level: device.battery_level || null,
-    last_seen_at: device.last_ping_at || null,
-    location_sharing_enabled: device.location_sharing_active,
-    current_location: device.current_location
-  })
+  const convertToDevice = (device: PersonalDevice): Device => {
+    const converted = {
+      id: device.id,
+      tag_id: device.id, // Use device id as tag_id for compatibility
+      device_name: device.device_name,
+      device_type: device.device_type,
+      device_model: device.device_model,
+      description: `${device.device_type} - ${device.device_model || 'Unknown model'}`,
+      is_active: device.is_active && device.location_sharing_active,
+      battery_level: device.battery_level || null,
+      last_seen_at: device.last_ping_at || null,
+      location_sharing_enabled: device.location_sharing_active,
+      current_location: device.current_location
+    }
+    console.log('🔄 [Dashboard] Converting device:', device.device_name, 'Location:', converted.current_location)
+    return converted
+  }
 
   const handleDeviceSelect = (device: PersonalDevice) => {
     setSelectedDevice(device)
   }
 
   const handleUpdateLocation = async (device: PersonalDevice) => {
+    console.log('📍 [Dashboard] handleUpdateLocation called with device:', device)
+    
     if (!navigator.geolocation) {
+      console.error('❌ [Dashboard] Geolocation not supported')
       toast.error('Geolocation is not supported by your browser')
       return
     }
 
-    const loadingToast = toast.loading('Getting your location...')
+    if (!user) {
+      console.error('❌ [Dashboard] No user found')
+      toast.error('Please log in to update location')
+      return
+    }
+
+    if (!device || !device.id) {
+      console.error('❌ [Dashboard] Invalid device:', device)
+      toast.error('Invalid device. Please try refreshing the page.')
+      return
+    }
+
+    console.log('📍 [Dashboard] Starting location update for device:', device.device_name, 'User:', user.email)
 
     try {
+      // Always try to get location - this will trigger browser permission prompt if needed
+      // Don't check permission status first as it might prevent the prompt from showing
+      const loadingToast = toast.loading('Requesting location access...')
+
+      // Request location - this will trigger the browser's permission prompt
+      // The browser will show the prompt if permission hasn't been set or was previously denied
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(
-          resolve,
-          reject,
+          (pos) => {
+            console.log('✅ [Dashboard] Location received:', pos.coords)
+            toast.dismiss(loadingToast)
+            resolve(pos)
+          },
+          (err) => {
+            console.error('❌ [Dashboard] Geolocation error:', err)
+            toast.dismiss(loadingToast)
+            
+            // Show helpful error messages
+            if (err.code === 1) {
+              // Permission denied - browser won't show prompt again until user changes settings
+              toast.error(
+                'Location access denied. Please click the lock icon in your browser address bar and allow location access, then try again.',
+                { duration: 8000 }
+              )
+            } else if (err.code === 2) {
+              toast.error('Location unavailable. Please check your GPS/WiFi connection.', { duration: 5000 })
+            } else if (err.code === 3) {
+              toast.error('Location request timed out. Please try again.', { duration: 5000 })
+            } else {
+              toast.error(`Failed to get location: ${err.message || 'Unknown error'}`, { duration: 5000 })
+            }
+            reject(err)
+          },
           { 
             enableHighAccuracy: true, 
-            timeout: 10000, 
-            maximumAge: 60000 
+            timeout: 15000, 
+            maximumAge: 0
           }
         )
       })
 
+      // If we reach here, we have a position
       const { latitude, longitude, accuracy } = position.coords
+      console.log('📍 [Dashboard] Coordinates:', { latitude, longitude, accuracy })
 
-      // Save location to location_pings table
-      const { error: pingError } = await supabase
+      const savingToast = toast.loading('Saving location...')
+
+      // Save location to location_pings table (with all required fields)
+      const { data: pingData, error: pingError } = await supabase
         .from('location_pings')
         .insert({
           device_id: device.id,
-          latitude: latitude,
-          longitude: longitude,
-          accuracy: accuracy,
+          user_id: user.id,
+          user_email: user.email || '',
+          latitude: latitude.toString(),
+          longitude: longitude.toString(),
+          accuracy: accuracy ? accuracy.toString() : null,
           recorded_at: new Date().toISOString(),
+          timestamp: new Date().toISOString(),
           is_background_ping: false,
           location_source: 'gps'
         })
+        .select()
+        .single()
 
-      if (pingError) throw pingError
+      if (pingError) {
+        console.error('❌ [Dashboard] Error saving location ping:', pingError)
+        throw pingError
+      }
+
+      console.log('✅ [Dashboard] Location ping saved:', pingData)
 
       // Update device's last_ping_at
       const { error: deviceError } = await supabase
@@ -276,33 +399,40 @@ export default function Dashboard() {
         })
         .eq('id', device.id)
 
-      if (deviceError) throw deviceError
+      if (deviceError) {
+        console.error('❌ [Dashboard] Error updating device:', deviceError)
+        throw deviceError
+      }
 
-      toast.dismiss(loadingToast)
-      toast.success(`Location for ${device.device_name} updated at ${new Date().toLocaleTimeString()}`, {
-        duration: 5000
+      toast.dismiss(savingToast)
+      toast.success(`✅ Location updated! ${device.device_name} is now at ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`, {
+        duration: 5000,
+        icon: '📍'
       })
 
       // Refresh data to show updated location
+      console.log('🔄 [Dashboard] Refreshing data to show updated location...')
       await fetchData()
       
-      // Force a small delay and refresh again to ensure map updates
+      // Force map to update by refreshing again after a short delay
       setTimeout(async () => {
+        console.log('🔄 [Dashboard] Second refresh to ensure map updates...')
         await fetchData()
-      }, 1000)
+      }, 1500)
 
     } catch (error: any) {
-      toast.dismiss(loadingToast)
-      console.error('Geolocation error:', error)
+      console.error('❌ [Dashboard] Location update failed:', error)
       
       if (error.code === 1) {
-        toast.error('Location access denied. Please enable location permissions.')
+        toast.error('❌ Location access denied. Please enable location permissions in your browser settings.', {
+          duration: 7000
+        })
       } else if (error.code === 2) {
-        toast.error('Location unavailable. Please try again.')
+        toast.error('❌ Location unavailable. Please check your GPS/WiFi connection and try again.')
       } else if (error.code === 3) {
-        toast.error('Location request timeout. Please try again.')
+        toast.error('⏱️ Location request timed out. Please try again.')
       } else {
-        toast.error(`Failed to update location: ${error.message}`)
+        toast.error(`❌ Failed to update location: ${error.message || 'Unknown error'}`)
       }
     }
   }
@@ -317,26 +447,37 @@ export default function Dashboard() {
     const loadingToast = toast.loading('Registering device...')
 
     try {
+      // Get current session for authentication
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session) {
+        throw new Error('Please log in to add devices')
+      }
+
       // Generate hardware fingerprint based on device type
       const hardwareFingerprint = `${deviceType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-      const { data, error } = await supabase
-        .from('personal_devices')
-        .insert({
+      // Use API endpoint instead of direct database insert (handles RLS properly)
+      const response = await fetch('/api/device/personal', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
           device_type: deviceType,
           device_name: deviceName.trim(),
           hardware_fingerprint: hardwareFingerprint,
           device_model: deviceType === 'phone' || deviceType === 'tablet' ? navigator.userAgent : deviceType,
-          device_os: navigator.platform,
-          sharing_enabled: true,
-          location_sharing_active: false,
-          privacy_mode: false,
-          is_active: true
+          device_os: navigator.platform || 'Unknown'
         })
-        .select()
-        .single()
+      })
 
-      if (error) throw error
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to register device')
+      }
 
       toast.dismiss(loadingToast)
       toast.success(`${deviceName} registered successfully!`)
@@ -350,45 +491,15 @@ export default function Dashboard() {
       await fetchData()
 
     } catch (error: any) {
+      console.error('Device registration error:', error)
       toast.dismiss(loadingToast)
-      toast.error(`Failed to register device: ${error.message}`)
+      toast.error(`Failed to register device: ${error.message || 'Unknown error'}`)
     } finally {
       setIsRegistering(false)
     }
   }
 
-  // Test function to add a sample location
-  const addTestLocation = async () => {
-    if (devices.length === 0) {
-      toast.error('No devices found to add test location')
-      return
-    }
-
-    const device = devices[0]
-    const testLatitude = 27.5069 // Nuevo Laredo area
-    const testLongitude = -99.5075
-
-    try {
-      const { error } = await supabase
-        .from('location_pings')
-        .insert({
-          device_id: device.id,
-          latitude: testLatitude,
-          longitude: testLongitude,
-          accuracy: 10,
-          recorded_at: new Date().toISOString(),
-          is_background_ping: false,
-          location_source: 'test'
-        })
-
-      if (error) throw error
-
-      toast.success('Test location added!')
-      await fetchData()
-    } catch (error: any) {
-      toast.error(`Failed to add test location: ${error.message}`)
-    }
-  }
+  // Removed test location function - using real data only
 
   if (loading) {
     return (
@@ -454,13 +565,6 @@ export default function Dashboard() {
                 Add Device
               </button>
 
-              {/* Test Button for debugging */}
-              <button
-                onClick={addTestLocation}
-                className="inline-flex items-center px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
-              >
-                🧪 Add Test Location
-              </button>
 
               {/* Legacy Add GPS Tag */}
               <Link 
@@ -540,16 +644,23 @@ export default function Dashboard() {
             </div>
             <div className="p-6">
               <div className="h-96 rounded-lg overflow-hidden">
-                <InteractiveMap
-                  devices={devices.map(convertToDevice)}
-                  selectedDevice={selectedDevice ? convertToDevice(selectedDevice) : null}
-                  onDeviceSelect={(device) => {
-                    const personalDevice = devices.find(d => d.id === device.id)
-                    if (personalDevice) handleDeviceSelect(personalDevice)
-                  }}
-                  onRefresh={fetchData}
-                  height="100%"
-                />
+                {(() => {
+                  const mapDevices = devices.map(convertToDevice)
+                  console.log('🗺️ [Dashboard] Passing devices to map:', mapDevices.length, 'devices')
+                  console.log('🗺️ [Dashboard] Devices with locations:', mapDevices.filter(d => d.current_location))
+                  return (
+                    <InteractiveMap
+                      devices={mapDevices}
+                      selectedDevice={selectedDevice ? convertToDevice(selectedDevice) : null}
+                      onDeviceSelect={(device) => {
+                        const personalDevice = devices.find(d => d.id === device.id)
+                        if (personalDevice) handleDeviceSelect(personalDevice)
+                      }}
+                      onRefresh={fetchData}
+                      height="100%"
+                    />
+                  )
+                })()}
               </div>
             </div>
           </div>
@@ -612,23 +723,49 @@ export default function Dashboard() {
                         </div>
                       </div>
                       
-                      {/* Last Seen */}
-                      {device.last_ping_at && (
-                        <div className="mt-2 text-xs text-gray-500">
-                          Last seen: {new Date(device.last_ping_at).toLocaleString()}
-                        </div>
-                      )}
+                      {/* Location Status */}
+                      <div className="mt-2 flex items-center justify-between">
+                        {device.current_location ? (
+                          <div className="flex items-center space-x-2 text-xs text-green-600">
+                            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                            <span>Location: {device.current_location.latitude.toFixed(4)}, {device.current_location.longitude.toFixed(4)}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-2 text-xs text-gray-500">
+                            <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                            <span>No location yet</span>
+                          </div>
+                        )}
+                        
+                        {/* Last Seen */}
+                        {device.last_ping_at && (
+                          <div className="text-xs text-gray-500">
+                            Last seen: {new Date(device.last_ping_at).toLocaleTimeString()}
+                          </div>
+                        )}
+                      </div>
 
                       {/* Update Location Button */}
-                      <div className="mt-3">
+                      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={(e) => {
+                          type="button"
+                          onClick={async (e) => {
+                            e.preventDefault()
                             e.stopPropagation()
-                            handleUpdateLocation(device)
+                            console.log('🔘 [Dashboard] Button clicked for device:', device.device_name, device.id)
+                            console.log('🔘 [Dashboard] User:', user?.email, 'Navigator:', typeof navigator !== 'undefined' ? 'available' : 'not available')
+                            
+                            try {
+                              await handleUpdateLocation(device)
+                            } catch (err: any) {
+                              console.error('❌ [Dashboard] Unhandled error in handleUpdateLocation:', err)
+                              toast.error(`Failed to update location: ${err?.message || 'Unknown error'}`)
+                            }
                           }}
-                          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-4 rounded-lg transition-colors"
+                          className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          📍 Update Location
+                          <span>📍</span>
+                          <span>{device.current_location ? 'Update Location' : 'Get Location'}</span>
                         </button>
                       </div>
                     </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { MapPin, Eye, EyeOff, Mail, Lock, User } from 'lucide-react'
@@ -18,7 +18,32 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [configStatus, setConfigStatus] = useState<string | null>(null)
   const router = useRouter()
+
+  // Check Supabase configuration on mount
+  useEffect(() => {
+    const checkConfig = async () => {
+      try {
+        const response = await fetch('/api/test-supabase-connection')
+        const data = await response.json()
+        
+        if (!data.configured) {
+          setConfigStatus('not-configured')
+          setError('Supabase is not configured. Please check your .env file and restart the dev server.')
+        } else if (!data.urlMatches) {
+          setConfigStatus('wrong-project')
+          setError('Supabase URL does not match the new project. Please update your .env file.')
+        } else {
+          setConfigStatus('configured')
+        }
+      } catch (err) {
+        console.error('Config check error:', err)
+      }
+    }
+    
+    checkConfig()
+  }, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -49,15 +74,35 @@ export default function SignupPage() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log('🚀 Signup form submitted')
     setLoading(true)
     setError('')
 
     if (!validateForm()) {
+      console.log('❌ Form validation failed')
       setLoading(false)
       return
     }
 
+    console.log('✅ Form validated, starting signup process...')
+
     try {
+      // Test connection first
+      try {
+        const testResponse = await fetch('/api/test-supabase-connection')
+        const testData = await testResponse.json()
+        
+        if (!testData.configured) {
+          setError('Supabase is not configured. Please check your .env file and restart the dev server.')
+          console.error('Supabase config test:', testData)
+          setLoading(false)
+          return
+        }
+      } catch (testError) {
+        console.error('Connection test failed:', testError)
+        // Continue anyway, might be a network issue
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -70,53 +115,103 @@ export default function SignupPage() {
       })
 
       if (error) {
-        setError(error.message)
+        console.error('Signup error:', error)
+        console.error('Error details:', JSON.stringify(error, null, 2))
+        
+        // Provide more helpful error messages
+        let errorMessage = error.message || 'Failed to create account'
+        
+        if (error.message?.includes('fetch') || error.message?.includes('network') || error.message?.includes('Failed to fetch')) {
+          errorMessage = `Connection error: ${error.message}. Please ensure:
+1. Your .env file has NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
+2. You've restarted the dev server after updating .env
+3. Check browser console (F12) for more details`
+        } else if (error.message?.includes('email')) {
+          errorMessage = error.message
+        } else if (error.message?.includes('password')) {
+          errorMessage = error.message
+        } else if (error.message?.includes('User already registered')) {
+          errorMessage = 'This email is already registered. Please sign in instead.'
+        }
+        
+        setError(errorMessage)
+        setLoading(false)
         return
       }
 
       if (data.user) {
-        // Insert user profile with admin role for specific email
-        const isAdmin = formData.email === 'luisdrod750@gmail.com'
+        console.log('✅ User created successfully:', data.user.id)
+        
+        // Insert user profile - set unlimited devices for testing
+        // The database trigger will auto-set is_premium and device_limit, but we set it explicitly too
         const { error: profileError } = await supabase
           .from('users')
           .insert({
             id: data.user.id,
             email: formData.email,
             full_name: formData.fullName,
-            role: isAdmin ? 'admin' : 'user'
+            is_premium: true, // Free for testing
+            device_limit: 999, // Unlimited for testing
+            current_devices: 0,
+            owned_tags: 0
           })
 
         if (profileError) {
           console.error('Profile creation error:', profileError)
+          // If user already exists (e.g., from OAuth), just update
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({
+              full_name: formData.fullName,
+              is_premium: true,
+              device_limit: 999
+            })
+            .eq('id', data.user.id)
+          
+          if (updateError) {
+            console.error('Profile update error:', updateError)
+            // Don't fail signup if profile update fails - user can still log in
+          }
         }
 
+        setLoading(false)
         setSuccess(true)
         
         // If user is confirmed immediately, redirect to dashboard
         if (data.user.email_confirmed_at) {
-          router.push('/dashboard')
+          setTimeout(() => {
+            router.push('/dashboard')
+          }, 1000)
         }
+      } else {
+        setError('Account creation failed. Please try again.')
+        setLoading(false)
       }
-    } catch (err) {
-      setError('An unexpected error occurred')
-    } finally {
+    } catch (err: any) {
+      console.error('Signup exception:', err)
+      console.error('Exception details:', err)
+      console.error('Error stack:', err?.stack)
+      
+      let errorMessage = 'Failed to create account. '
+      
+      if (err?.message?.includes('fetch') || err?.name === 'TypeError' || err?.message?.includes('Failed to fetch')) {
+        errorMessage = `Network error: ${err.message || 'Connection failed'}. 
+
+Please check:
+1. Your .env file is in the root directory
+2. Environment variables are set correctly (NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY)
+3. You've restarted the dev server (npm run dev)
+4. Check browser console (F12) for detailed errors
+5. Visit /api/test-supabase-connection to verify configuration`
+      } else {
+        errorMessage += err?.message || 'Please check your connection and try again.'
+      }
+      
+      setError(errorMessage)
       setLoading(false)
     }
   }
 
-  const handleGoogleSignup = async () => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`
-        }
-      })
-      if (error) setError(error.message)
-    } catch (err) {
-      setError('An unexpected error occurred')
-    }
-  }
 
   if (success) {
     return (
@@ -319,44 +414,6 @@ export default function SignupPage() {
               </button>
             </div>
 
-            <div className="mt-6">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">Or continue with</span>
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <button
-                  type="button"
-                  onClick={handleGoogleSignup}
-                  className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24">
-                    <path
-                      fill="currentColor"
-                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M4.86 13.71c-.18-.64-.28-1.32-.28-2.02s.1-1.38.28-2.02V6.84H2.18C1.43 8.34 1 10.15 1 12.04c0 1.89.43 3.7 1.18 5.2l2.68-2.53z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l2.68 2.53c.87-2.6 3.3-4.53 6.16-4.53z"
-                    />
-                  </svg>
-                  <span className="ml-2">Sign up with Google</span>
-                </button>
-              </div>
-            </div>
           </form>
         </div>
       </div>

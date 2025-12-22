@@ -45,21 +45,37 @@ export async function POST(request: NextRequest) {
       // Tag exists but not registered - this is for returnable tags
     }
 
-    // Check user device limits
+    // Device limits removed for testing - all features free
+    // Check user exists and create profile if needed
     const { data: userData } = await supabase
       .from('users')
       .select('current_devices, device_limit, is_premium')
       .eq('id', user.id)
       .single();
 
-    if (userData && userData.current_devices >= userData.device_limit && !userData.is_premium) {
-      return NextResponse.json(
-        { 
-          error: 'Device limit reached. Please upgrade to premium or purchase a subscription.',
-          requiresUpgrade: true 
-        },
-        { status: 403 }
-      );
+    // If user doesn't have profile, create one with unlimited devices
+    if (!userData) {
+      const { data: authUser } = await supabase.auth.getUser();
+      await supabase
+        .from('users')
+        .insert({
+          id: user.id,
+          email: authUser.user?.email || '',
+          full_name: authUser.user?.user_metadata?.full_name || '',
+          is_premium: true, // Free for testing
+          device_limit: 999, // Unlimited
+          current_devices: 0,
+          owned_tags: 0
+        });
+    } else if (!userData.is_premium || userData.device_limit < 999) {
+      // Upgrade existing users to unlimited for testing
+      await supabase
+        .from('users')
+        .update({
+          is_premium: true,
+          device_limit: 999
+        })
+        .eq('id', user.id);
     }
 
     // Register device using stored function

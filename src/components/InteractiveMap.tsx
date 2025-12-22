@@ -91,7 +91,9 @@ export default function InteractiveMap({
   showAccuracyCircles = true,
   enableGeocoding = true
 }: InteractiveMapProps) {
-  console.log('InteractiveMap received devices:', devices)
+  console.log('🗺️ [InteractiveMap] Component rendered with', devices?.length || 0, 'devices')
+  console.log('🗺️ [InteractiveMap] Devices:', devices)
+  console.log('🗺️ [InteractiveMap] Devices with locations:', devices?.filter(d => d.current_location) || [])
   const [map, setMap] = useState<any>(null)
   const [leafletLoaded, setLeafletLoaded] = useState(false)
   const [customIcon, setCustomIcon] = useState<any>(null)
@@ -105,16 +107,28 @@ export default function InteractiveMap({
   // Load Leaflet dynamically
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      import('leaflet').then((L) => {
+      import('leaflet').then((leafletModule) => {
+        const L = leafletModule.default || leafletModule
+        // Store L globally for fallback use
+        if (typeof window !== 'undefined') {
+          (window as any).L = L
+        }
+        
         setLeafletLoaded(true)
         
         // Create custom div icons (no need for external image files)
         const getDeviceIcon = (deviceType: string, isSelected: boolean = false) => {
-          const size = isSelected ? 40 : 32
-          const bgColor = getDeviceColor(deviceType)
-          
-          return L.divIcon({
-                          html: `
+          try {
+            if (!L || !L.divIcon) {
+              console.error('❌ [Map] L.divIcon not available', { L, hasDivIcon: !!L?.divIcon })
+              return null
+            }
+            
+            const size = isSelected ? 40 : 32
+            const bgColor = getDeviceColor(deviceType)
+            
+            const icon = L.divIcon({
+              html: `
                 <style>
                   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
                   @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
@@ -126,11 +140,18 @@ export default function InteractiveMap({
                   ${isSelected ? '<div style="position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; background-color: #facc15; border-radius: 50%; border: 1px solid white; animation: ping 1s infinite;"></div>' : ''}
                 </div>
               `,
-            className: 'custom-marker',
-            iconSize: [size, size],
-            iconAnchor: [size/2, size],
-            popupAnchor: [0, -size]
-          })
+              className: 'custom-marker',
+              iconSize: [size, size],
+              iconAnchor: [size/2, size],
+              popupAnchor: [0, -size]
+            })
+            
+            console.log(`✅ [Map] Icon created successfully for type: ${deviceType}`, icon)
+            return icon
+          } catch (error) {
+            console.error(`❌ [Map] Error in getDeviceIcon for ${deviceType}:`, error)
+            return null
+          }
         }
 
         const getDeviceColor = (deviceType: string) => {
@@ -160,8 +181,13 @@ export default function InteractiveMap({
           }
         }
 
+        console.log('✅ [Map] Icon function created and set')
         setCustomIcon(getDeviceIcon)
         setSelectedIcon(getDeviceIcon)
+        
+        // Test icon creation
+        const testIcon = getDeviceIcon('laptop', false)
+        console.log('🧪 [Map] Test icon for laptop:', testIcon ? 'created' : 'failed', testIcon)
       })
     }
   }, [])
@@ -171,14 +197,20 @@ export default function InteractiveMap({
     if (map && autoCenter && devices.length > 0 && leafletLoaded) {
       const validLocations = devices
         .filter(device => device.current_location?.latitude && device.current_location?.longitude)
-        .map(device => [device.current_location!.latitude, device.current_location!.longitude])
-
+        .map(device => [device.current_location!.latitude, device.current_location!.longitude] as [number, number])
+      
+      console.log('🗺️ [Map] Valid locations found:', validLocations.length, 'out of', devices.length, 'devices')
+      
       if (validLocations.length > 0) {
         if (validLocations.length === 1) {
+          console.log('🗺️ [Map] Centering on single device at:', validLocations[0])
           map.setView(validLocations[0], 15)
         } else {
+          console.log('🗺️ [Map] Fitting bounds for', validLocations.length, 'devices')
           map.fitBounds(validLocations, { padding: [20, 20] })
         }
+      } else {
+        console.log('⚠️ [Map] No valid locations to display')
       }
     }
   }, [map, devices, autoCenter, leafletLoaded])
@@ -268,6 +300,18 @@ export default function InteractiveMap({
         return '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }
   }
+
+  // Center map on selected device when it changes
+  useEffect(() => {
+    if (map && selectedDevice?.current_location) {
+      const { latitude, longitude } = selectedDevice.current_location
+      if (typeof window !== 'undefined' && (window as any).L) {
+        const L = (window as any).L
+        map.setView([latitude, longitude], 15, { animate: true, duration: 1 })
+        console.log('🗺️ Map centered on selected device:', selectedDevice.device_name, [latitude, longitude])
+      }
+    }
+  }, [map, selectedDevice])
 
   if (!leafletLoaded) {
     return (
@@ -362,103 +406,155 @@ export default function InteractiveMap({
         />
 
         {/* Render device markers */}
-        {leafletLoaded && (devices || []).map((device) => {
-          console.log('Rendering device:', device.device_name, 'Location:', device.current_location)
-          if (!device.current_location?.latitude || !device.current_location?.longitude) {
-            console.log(`Skipping device ${device.device_name} - no valid location`)
+        {(() => {
+          console.log('🗺️ [Map] Rendering markers - leafletLoaded:', leafletLoaded, 'customIcon:', !!customIcon, 'devices:', devices?.length || 0)
+          
+          if (!leafletLoaded) {
+            console.log('⏳ [Map] Waiting for Leaflet to load...')
             return null
           }
           
+          if (!customIcon) {
+            console.log('⏳ [Map] Waiting for custom icon to be created...')
+            return null
+          }
+          
+          if (!devices || devices.length === 0) {
+            console.log('⚠️ [Map] No devices provided')
+            return null
+          }
+          
+          const devicesWithLocations = devices.filter(d => d.current_location?.latitude && d.current_location?.longitude)
+          console.log('🗺️ [Map] Devices with valid locations:', devicesWithLocations.length, 'out of', devices.length)
+          
+          return devicesWithLocations.map((device) => {
+            console.log('🗺️ [Map] Rendering device:', device.device_name, 'Location:', device.current_location)
+            
           const isSelected = selectedDevice?.id === device.id
-          const icon = (customIcon && typeof customIcon === 'function') ? customIcon(device.device_type, isSelected) : undefined
-          const position: [number, number] = [device.current_location.latitude, device.current_location.longitude]
-          const accuracy = device.current_location.accuracy || 0
+          console.log(`🔍 [Map] Creating icon for device: ${device.device_name}, type: ${device.device_type}, isSelected: ${isSelected}`)
+          console.log(`🔍 [Map] customIcon type:`, typeof customIcon, 'is function:', typeof customIcon === 'function')
+          
+          let icon = null
+          if (typeof customIcon === 'function') {
+            try {
+              icon = customIcon(device.device_type, isSelected)
+              console.log(`🔍 [Map] Icon created:`, icon ? 'success' : 'failed', icon)
+            } catch (error) {
+              console.error(`❌ [Map] Error creating icon:`, error)
+            }
+          }
+          
+          if (!icon) {
+            console.warn(`⚠️ [Map] No icon created for device ${device.device_name} (type: ${device.device_type})`)
+            // Create a fallback default icon
+            if (typeof window !== 'undefined' && (window as any).L) {
+              const L = (window as any).L
+              icon = L.divIcon({
+                html: `<div style="width: 32px; height: 32px; background-color: #4b5563; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">💻</div>`,
+                className: 'custom-marker',
+                iconSize: [32, 32],
+                iconAnchor: [16, 32],
+                popupAnchor: [0, -32]
+              })
+              console.log(`✅ [Map] Created fallback icon for ${device.device_name}`)
+            } else {
+              return null
+            }
+          }
+            
+            const position: [number, number] = [device.current_location!.latitude, device.current_location!.longitude]
+            const accuracy = device.current_location!.accuracy || 0
 
-          return (
-            <div key={device.id}>
-              {/* Accuracy Circle */}
-              {showAccuracyCircles && accuracy > 0 && (
-                <Circle
-                  center={position}
-                  radius={accuracy}
-                  color="#3b82f6"
-                  fillColor="#3b82f6"
-                  fillOpacity={0.1}
-                  weight={1}
-                />
-              )}
+            console.log(`✅ [Map] Rendering marker for ${device.device_name} at`, position)
 
-              {/* Device Marker */}
-            {icon && (
-              <Marker
-                position={position}
-                icon={icon}
-                eventHandlers={{
-                  click: () => onDeviceSelect?.(device)
-                }}
-              >
-              <Popup>
-                  <div className="p-3 min-w-[250px]">
-                    <div className="flex items-center gap-2 mb-3">
-                      <MapPin className="h-5 w-5 text-blue-600" />
-                      <h3 className="font-semibold text-gray-900 text-lg">
-                        {device.device_name}
-                    </h3>
-                      <div className={`w-3 h-3 rounded-full ${device.is_active ? 'bg-green-500' : 'bg-gray-400'}`} />
-                    </div>
-                    
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-gray-700">Type:</span>
-                        <span className="capitalize text-gray-600">{device.device_type.replace('_', ' ')}</span>
+            return (
+              <div key={device.id}>
+                {/* Accuracy Circle */}
+                {showAccuracyCircles && accuracy > 0 && (
+                  <Circle
+                    center={position}
+                    radius={accuracy}
+                    color="#3b82f6"
+                    fillColor="#3b82f6"
+                    fillOpacity={0.1}
+                    weight={1}
+                  />
+                )}
+
+                {/* Device Marker */}
+                <Marker
+                  key={`marker-${device.id}`}
+                  position={position}
+                  icon={icon}
+                  eventHandlers={{
+                    click: () => {
+                      console.log(`🖱️ [Map] Device clicked: ${device.device_name}`)
+                      onDeviceSelect?.(device)
+                    }
+                  }}
+                >
+                  <Popup>
+                    <div className="p-3 min-w-[250px]">
+                      <div className="flex items-center gap-2 mb-3">
+                        <MapPin className="h-5 w-5 text-blue-600" />
+                        <h3 className="font-semibold text-gray-900 text-lg">
+                          {device.device_name}
+                        </h3>
+                        <div className={`w-3 h-3 rounded-full ${device.is_active ? 'bg-green-500' : 'bg-gray-400'}`} />
                       </div>
                       
-                      {device.battery_level !== null && (
+                      <div className="space-y-2 text-sm">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-gray-700">Battery:</span>
-                          <div className="flex items-center gap-1 text-gray-600">
-                        <Battery className="h-3 w-3" />
-                            <span>{device.battery_level}%</span>
-                          </div>
-                      </div>
-                    )}
-                    
-                      {device.last_seen_at && (
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-gray-700">Last Seen:</span>
-                          <div className="flex items-center gap-1 text-gray-600">
-                        <Clock className="h-3 w-3" />
-                            <span>{formatTimestamp(device.last_seen_at)}</span>
-                          </div>
+                          <span className="font-medium text-gray-700">Type:</span>
+                          <span className="capitalize text-gray-600">{device.device_type.replace('_', ' ')}</span>
                         </div>
-                      )}
-
-                      {accuracy > 0 && (
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-gray-700">Accuracy:</span>
-                          <span className="text-gray-600">±{Math.round(accuracy)}m</span>
-                      </div>
-                    )}
-                    
-                      <div className="border-t pt-2 mt-3">
-                        <div className="text-xs text-gray-500 space-y-1">
-                          <div>Coordinates: {device.current_location.latitude.toFixed(6)}, {device.current_location.longitude.toFixed(6)}</div>
-                          {deviceAddresses[device.id] && (
-                            <div className="mt-2">
-                              <span className="font-medium text-gray-700">Address:</span>
-                              <div className="text-gray-600 mt-1">{deviceAddresses[device.id]}</div>
+                        
+                        {device.battery_level !== null && (
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-gray-700">Battery:</span>
+                            <div className="flex items-center gap-1 text-gray-600">
+                              <Battery className="h-3 w-3" />
+                              <span>{device.battery_level}%</span>
                             </div>
-                          )}
+                          </div>
+                        )}
+                        
+                        {device.last_seen_at && (
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-gray-700">Last Seen:</span>
+                            <div className="flex items-center gap-1 text-gray-600">
+                              <Clock className="h-3 w-3" />
+                              <span>{formatTimestamp(device.last_seen_at)}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {accuracy > 0 && (
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-gray-700">Accuracy:</span>
+                            <span className="text-gray-600">±{Math.round(accuracy)}m</span>
+                          </div>
+                        )}
+                        
+                        <div className="border-t pt-2 mt-3">
+                          <div className="text-xs text-gray-500 space-y-1">
+                            <div>Coordinates: {device.current_location!.latitude.toFixed(6)}, {device.current_location!.longitude.toFixed(6)}</div>
+                            {deviceAddresses[device.id] && (
+                              <div className="mt-2">
+                                <span className="font-medium text-gray-700">Address:</span>
+                                <div className="text-gray-600 mt-1">{deviceAddresses[device.id]}</div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-            )}
-            </div>
-          )
-        })}
+                    </div>
+                  </Popup>
+                </Marker>
+              </div>
+            )
+          })
+        })()}
 
         {/* Render route if enabled */}
         {showRoute && locationHistory.length > 1 && (

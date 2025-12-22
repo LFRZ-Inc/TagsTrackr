@@ -56,29 +56,65 @@ export default function LoginPage() {
     setMessage('')
 
     try {
+      console.log('🔐 Attempting login for:', email)
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
       if (error) {
+        console.error('❌ Login error:', error)
+        console.error('Error details:', JSON.stringify(error, null, 2))
+        
         // Check if it's an email confirmation error
-        if (error.message.includes('Email not confirmed') || error.message.includes('confirm')) {
-          setError(error.message)
+        if (error.message.includes('Email not confirmed') || error.message.includes('confirm') || error.message.includes('not verified')) {
+          setError(`${error.message}. Please check your email and click the confirmation link, or use the button below to resend.`)
           setShowResendButton(true)
+        } else if (error.message.includes('Invalid login credentials')) {
+          setError('Invalid email or password. Please check your credentials and try again.')
+          setShowResendButton(false)
         } else {
-          setError(error.message)
+          setError(error.message || 'Login failed. Please try again.')
           setShowResendButton(false)
         }
+        setLoading(false)
         return
       }
 
       if (data.user) {
-        router.push('/dashboard')
+        console.log('✅ Login successful, user:', data.user.id)
+        console.log('✅ Session:', data.session ? 'Active' : 'No session')
+        console.log('✅ Email confirmed:', data.user.email_confirmed_at ? 'Yes' : 'No')
+        
+        // If email not confirmed, show helpful message
+        if (!data.user.email_confirmed_at) {
+          setError('Please check your email and click the confirmation link before signing in. Use the button below to resend the confirmation email.')
+          setShowResendButton(true)
+          setLoading(false)
+          return
+        }
+        
+        // Wait a moment for session to be set
+        await new Promise(resolve => setTimeout(resolve, 200))
+        
+        // Verify session is set
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          console.log('✅ Session verified, redirecting to dashboard')
+          // Use window.location for a full page reload to ensure session is loaded
+          window.location.href = '/dashboard'
+        } else {
+          console.warn('⚠️ No session after login, trying redirect anyway')
+          window.location.href = '/dashboard'
+        }
+      } else {
+        setError('Login failed. No user data returned.')
+        setLoading(false)
       }
-    } catch (err) {
-      setError('An unexpected error occurred')
-    } finally {
+    } catch (err: any) {
+      console.error('💥 Login exception:', err)
+      setError(err?.message || 'An unexpected error occurred. Please try again.')
       setLoading(false)
     }
   }

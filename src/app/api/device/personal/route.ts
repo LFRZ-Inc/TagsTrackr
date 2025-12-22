@@ -25,6 +25,10 @@ const getSupabaseAdminClient = () => {
     throw new Error('Missing Supabase environment variables')
   }
   
+  // Log which key is being used (for debugging)
+  const hasServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY
+  console.log(`🔑 [API] Admin client using: ${hasServiceKey ? 'SERVICE_ROLE_KEY' : 'ANON_KEY (fallback)'}`)
+  
   return createClient(url, serviceKey, {
     auth: {
       autoRefreshToken: false,
@@ -114,8 +118,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create new device using admin client (bypasses RLS)
+    // Create new device - try with auth client first (respects RLS with proper session)
     console.log('➕ [API] Creating new device...')
+    
     const deviceData = {
       user_id: user.id,
       device_type,
@@ -124,18 +129,61 @@ export async function POST(request: NextRequest) {
       device_model: device_model || 'Unknown',
       device_os: device_os || 'Unknown',
       is_active: true,
-              location_sharing_enabled: false,
+      location_sharing_enabled: false,
       sharing_enabled: true,
       privacy_mode: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
 
-    const { data: newDevice, error: insertError } = await supabaseAdmin
-      .from('personal_devices')
-      .insert(deviceData)
-      .select('*')
-      .single()
+    // Try database function first (bypasses RLS, works with anon key)
+    console.log('➕ [API] Creating device using database function...')
+    
+    // Set session on auth client for RPC call
+    await supabaseAuth.auth.setSession({
+      access_token: token,
+      refresh_token: ''
+    })
+    
+    const { data: functionResult, error: functionError } = await supabaseAuth.rpc('create_personal_device', {
+      p_user_id: user.id,
+      p_device_type: device_type,
+      p_device_name: device_name,
+      p_hardware_fingerprint: hardware_fingerprint,
+      p_device_model: device_model || 'Unknown',
+      p_device_os: device_os || 'Unknown'
+    })
+
+    let newDevice, insertError
+    
+    if (functionError) {
+      console.error('❌ [API] Database function error:', functionError)
+      console.error('Function error details:', JSON.stringify(functionError, null, 2))
+      insertError = functionError
+      
+      // Fallback: Try direct insert with admin client (uses service role key if available)
+      console.log('⚠️ [API] Function failed, trying direct insert with admin client...')
+      const { data: adminData, error: adminError } = await supabaseAdmin
+        .from('personal_devices')
+        .insert(deviceData)
+        .select('*')
+        .single()
+      
+      if (adminError) {
+        console.error('❌ [API] Admin client insert also failed:', adminError)
+        newDevice = null
+        insertError = adminError
+      } else {
+        console.log('✅ [API] Device created via admin client:', adminData?.id)
+        newDevice = adminData
+        insertError = null
+      }
+    } else {
+      // Function returns array, get first result
+      newDevice = Array.isArray(functionResult) && functionResult.length > 0 ? functionResult[0] : functionResult
+      insertError = null
+      console.log('✅ [API] Device created via function:', newDevice?.id)
+    }
 
     if (insertError) {
       console.log('❌ [API] Error creating device:', insertError)
