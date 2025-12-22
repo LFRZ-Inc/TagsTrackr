@@ -9,6 +9,7 @@ import AlertsManager from '@/components/AlertsManager'
 import { toast } from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
+import { getDeviceOptimization, getGeolocationOptions, getGeolocationErrorMessage, type DeviceType } from '@/lib/deviceOptimization'
 
 // Types
 interface PersonalDevice {
@@ -329,9 +330,9 @@ export default function Dashboard() {
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
-            const isPhone = device.device_type === 'phone'
+            const optimization = getDeviceOptimization(device.device_type as DeviceType)
             console.log('✅ [Dashboard] Location received:', pos.coords)
-            console.log(`📍 [Dashboard] Accuracy: ${pos.coords.accuracy}m (${isPhone ? 'GPS' : 'WiFi'})`)
+            console.log(`📍 [Dashboard] Accuracy: ${pos.coords.accuracy}m (${optimization.hasGPS ? 'GPS' : 'WiFi'})`)
             toast.dismiss(loadingToast)
             resolve(pos)
           },
@@ -339,40 +340,12 @@ export default function Dashboard() {
             console.error('❌ [Dashboard] Geolocation error:', err)
             toast.dismiss(loadingToast)
             
-            // Show helpful error messages
-            if (err.code === 1) {
-              // Permission denied
-              // On mobile: Browser may allow re-prompting, guide user to try again
-              // On desktop: User needs to manually change browser settings
-              const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-              const errorMsg = isMobile
-                ? 'Location access denied. Please allow location access when prompted, or enable it in your browser settings and try again.'
-                : 'Location access denied. Please click the lock icon in your browser address bar and allow location access, then try again.'
-              toast.error(errorMsg, { duration: 8000 })
-            } else if (err.code === 2) {
-              const errorMsg = device.device_type === 'phone'
-                ? 'Location unavailable. Please check your GPS is enabled and try going outdoors for better signal.'
-                : 'Location unavailable. Please check your GPS/WiFi connection.'
-              toast.error(errorMsg, { duration: 5000 })
-            } else if (err.code === 3) {
-              const errorMsg = device.device_type === 'phone'
-                ? 'GPS lock timed out. Try going outdoors or wait a bit longer for GPS signal.'
-                : 'Location request timed out. Please try again.'
-              toast.error(errorMsg, { duration: 5000 })
-            } else {
-              toast.error(`Failed to get location: ${err.message || 'Unknown error'}`, { duration: 5000 })
-            }
+            // Show device-optimized error messages
+            const errorMsg = getGeolocationErrorMessage(err.code, device.device_type as DeviceType)
+            toast.error(errorMsg, { duration: err.code === 1 ? 8000 : 5000 })
             reject(err)
           },
-          (() => {
-            // Optimize geolocation options based on device type
-            const isPhone = device.device_type === 'phone'
-            return {
-              enableHighAccuracy: true, // Always use high accuracy (GPS for phones)
-              timeout: isPhone ? 20000 : 15000, // Longer timeout for phones (GPS lock takes time)
-              maximumAge: 0 // Always get fresh location
-            }
-          })()
+          getGeolocationOptions(device.device_type as DeviceType)
         )
       })
 
@@ -649,9 +622,9 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Main Content - Responsive Layout */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
           
           {/* Live Map Section */}
           <div className="bg-white rounded-lg shadow-sm border">
@@ -659,8 +632,8 @@ export default function Dashboard() {
               <h2 className="text-xl font-semibold text-gray-900">Live Map</h2>
               <p className="text-sm text-gray-500 mt-1">Real-time device locations</p>
             </div>
-            <div className="p-6">
-              <div className="h-96 rounded-lg overflow-hidden">
+            <div className="p-3 sm:p-4 md:p-6">
+              <div className="h-64 sm:h-80 md:h-96 lg:h-[28rem] xl:h-96 rounded-lg overflow-hidden">
                 {(() => {
                   const mapDevices = devices.map(convertToDevice)
                   console.log('🗺️ [Dashboard] Passing devices to map:', mapDevices.length, 'devices')
@@ -702,11 +675,11 @@ export default function Dashboard() {
                   </button>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {devices.map((device) => (
                     <div 
                       key={device.id} 
-                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                      className={`p-3 sm:p-4 border rounded-lg cursor-pointer transition-colors ${
                         selectedDevice?.id === device.id 
                           ? 'border-blue-300 bg-blue-50' 
                           : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
@@ -714,38 +687,41 @@ export default function Dashboard() {
                       onClick={() => handleDeviceSelect(device)}
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <span className="text-2xl">
+                        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+                          <span className="text-xl sm:text-2xl flex-shrink-0">
                             {deviceTypes.find(t => t.id === device.device_type)?.icon || '📱'}
                           </span>
-                          <div>
-                            <h3 className="font-medium text-gray-900">{device.device_name}</h3>
-                            <p className="text-sm text-gray-500 capitalize">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-medium text-gray-900 text-sm sm:text-base truncate">{device.device_name}</h3>
+                            <p className="text-xs sm:text-sm text-gray-500 capitalize">
                               {device.device_type.replace('_', ' ')}
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0 ml-2">
                           {/* Status Indicator */}
-                          <div className={`w-3 h-3 rounded-full ${
+                          <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full ${
                             device.location_sharing_active ? 'bg-green-500' : 'bg-gray-400'
                           }`}></div>
                           
                           {/* Battery Level */}
                           {device.battery_level && (
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-gray-500 hidden sm:inline">
                               🔋 {device.battery_level}%
                             </span>
                           )}
                         </div>
                       </div>
                       
-                      {/* Location Status */}
-                      <div className="mt-2 flex items-center justify-between">
+                      {/* Location Status - Responsive */}
+                      <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-0">
                         {device.current_location ? (
-                          <div className="flex items-center space-x-2 text-xs text-green-600">
-                            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                            <span>Location: {device.current_location.latitude.toFixed(4)}, {device.current_location.longitude.toFixed(4)}</span>
+                          <div className="flex items-center space-x-2 text-xs text-green-600 min-w-0">
+                            <span className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></span>
+                            <span className="truncate">
+                              <span className="hidden sm:inline">Location: </span>
+                              {device.current_location.latitude.toFixed(4)}, {device.current_location.longitude.toFixed(4)}
+                            </span>
                           </div>
                         ) : (
                           <div className="flex items-center space-x-2 text-xs text-gray-500">
@@ -756,14 +732,15 @@ export default function Dashboard() {
                         
                         {/* Last Seen */}
                         {device.last_ping_at && (
-                          <div className="text-xs text-gray-500">
-                            Last seen: {new Date(device.last_ping_at).toLocaleTimeString()}
+                          <div className="text-xs text-gray-500 flex-shrink-0">
+                            Last seen: <span className="hidden sm:inline">{new Date(device.last_ping_at).toLocaleTimeString()}</span>
+                            <span className="sm:hidden">{new Date(device.last_ping_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           </div>
                         )}
                       </div>
 
-                      {/* Update Location Button */}
-                      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                      {/* Update Location Button - Full width on mobile */}
+                      <div className="mt-2 sm:mt-3" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={async (e) => {

@@ -1,6 +1,7 @@
 'use client'
 
 import { supabase } from './supabase'
+import { getDeviceOptimization, type DeviceType } from './deviceOptimization'
 
 interface LocationData {
   latitude: number
@@ -30,26 +31,42 @@ class LocationTrackingService {
     pingInterval: 30000 // 30 seconds (default, optimized per device type)
   }
 
-  // Detect if device is a phone for optimized tracking
-  private isPhoneDevice(): boolean {
-    if (typeof window === 'undefined') return false
-    const userAgent = navigator.userAgent.toLowerCase()
-    return userAgent.includes('mobile') || 
-           userAgent.includes('android') || 
-           userAgent.includes('iphone') ||
-           userAgent.includes('ipod')
+  private deviceType?: string
+
+  // Detect if device is GPS-capable for optimized tracking
+  private isGPSDevice(): boolean {
+    if (!this.deviceType) return false
+    const gpsDevices = ['phone', 'tablet', 'watch', 'gps_tag']
+    return gpsDevices.includes(this.deviceType)
   }
 
-  constructor(options?: Partial<TrackingOptions>) {
+  constructor(options?: Partial<TrackingOptions> & { deviceType?: string }) {
     if (options) {
-      this.options = { ...this.options, ...options }
+      this.deviceType = options.deviceType
+      const { deviceType, ...trackingOptions } = options
+      this.options = { ...this.options, ...trackingOptions }
     }
     
-    // Optimize for phone devices (better GPS, more frequent updates)
-    if (this.isPhoneDevice() && !options?.pingInterval) {
-      this.options.pingInterval = 20000 // 20 seconds for phones (more frequent)
-      this.options.enableHighAccuracy = true // Always use GPS on phones
-      this.options.maximumAge = 30000 // 30 seconds (fresher data)
+    // Optimize based on device type capabilities
+    if (this.deviceType && !options?.pingInterval) {
+      const gpsDevices = ['phone', 'tablet', 'watch', 'gps_tag']
+      if (gpsDevices.includes(this.deviceType)) {
+        // GPS-capable devices
+        if (this.deviceType === 'phone') {
+          this.options.pingInterval = 20000 // 20 seconds
+          this.options.maximumAge = 30000 // 30 seconds
+        } else if (this.deviceType === 'tablet') {
+          this.options.pingInterval = 25000 // 25 seconds
+          this.options.maximumAge = 30000 // 30 seconds
+        } else if (this.deviceType === 'watch') {
+          this.options.pingInterval = 30000 // 30 seconds (battery-aware)
+          this.options.maximumAge = 30000 // 30 seconds
+        } else if (this.deviceType === 'gps_tag') {
+          this.options.pingInterval = 60000 // 60 seconds (battery-efficient)
+          this.options.maximumAge = 120000 // 2 minutes
+        }
+        this.options.enableHighAccuracy = true
+      }
     }
   }
 
@@ -205,8 +222,16 @@ class LocationTrackingService {
       newLocation.longitude
     )
 
-    // Phones have better GPS, so use smaller threshold (5m vs 10m for laptops)
-    const threshold = this.isPhoneDevice() ? 5 : 10
+    // GPS devices have better accuracy, so use smaller threshold
+    let threshold = 10 // Default for laptops
+    if (this.deviceType === 'phone' || this.deviceType === 'watch') {
+      threshold = 5 // 5 meters for phones and watches
+    } else if (this.deviceType === 'tablet') {
+      threshold = 7 // 7 meters for tablets
+    } else if (this.deviceType === 'gps_tag') {
+      threshold = 10 // 10 meters for GPS tags (battery-efficient)
+    }
+    
     return distance > threshold
   }
 

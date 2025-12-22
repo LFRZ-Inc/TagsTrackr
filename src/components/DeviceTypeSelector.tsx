@@ -321,7 +321,9 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
 
       // Request location permission with device-optimized settings
       // This will show the permission prompt on mobile even if previously denied
-      const isPhone = selectedType === 'phone';
+      const { getGeolocationOptions } = await import('@/lib/deviceOptimization');
+      const geolocationOptions = getGeolocationOptions(selectedType as any);
+      
       const permission = await new Promise<boolean>((resolve) => {
         navigator.geolocation.getCurrentPosition(
           () => resolve(true),
@@ -334,10 +336,7 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
             }
             resolve(false);
           },
-          { 
-            timeout: isPhone ? 20000 : 10000, // Longer timeout for phones (GPS lock)
-            enableHighAccuracy: true // Always request high accuracy
-          }
+          geolocationOptions
         );
       });
 

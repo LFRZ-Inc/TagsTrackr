@@ -184,21 +184,19 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
   }, []);
 
   const getLocationErrorMessage = (error: GeolocationPositionError, deviceType?: string): string => {
-    const isPhone = deviceType === 'phone';
+    if (deviceType) {
+      const { getGeolocationErrorMessage } = require('@/lib/deviceOptimization');
+      return getGeolocationErrorMessage(error.code, deviceType as any);
+    }
     
+    // Fallback for unknown device types
     switch (error.code) {
       case error.PERMISSION_DENIED:
-        return isPhone 
-          ? 'Location access denied. Please enable location permissions in your browser settings and ensure GPS is enabled in your device settings.'
-          : 'Location access denied. Please enable location permissions in your browser settings.';
+        return 'Location access denied. Please enable location permissions in your browser settings.';
       case error.POSITION_UNAVAILABLE:
-        return isPhone
-          ? 'Location information unavailable. Please check your GPS is enabled and try going outdoors for better signal.'
-          : 'Location information unavailable. Please check your GPS/WiFi connection.';
+        return 'Location information unavailable. Please check your GPS/WiFi connection.';
       case error.TIMEOUT:
-        return isPhone
-          ? 'GPS lock timed out. Try going outdoors or wait a bit longer for GPS signal.'
-          : 'Location request timed out. Please try again.';
+        return 'Location request timed out. Please try again.';
       default:
         return 'An unknown location error occurred. Please try again.';
     }
@@ -249,11 +247,17 @@ export default function LocationSharingControl({ devices, onDeviceUpdate }: Loca
         setErrorMessage(message);
         handleToggleSharing(false);
       },
-      {
-        enableHighAccuracy: true,
-        timeout: currentDevice?.device_type === 'phone' ? 20000 : 30000, // Longer timeout for phones (GPS lock)
-        maximumAge: currentDevice?.device_type === 'phone' ? 30000 : 60000 // Fresher data for phones
-      }
+      (() => {
+        if (currentDevice?.device_type) {
+          const { getGeolocationOptions } = require('@/lib/deviceOptimization');
+          return getGeolocationOptions(currentDevice.device_type as any);
+        }
+        return {
+          enableHighAccuracy: true,
+          timeout: 30000,
+          maximumAge: 60000
+        };
+      })()
     );
 
     setLocationWatchId(watchId);
