@@ -341,28 +341,28 @@ export default function InteractiveMap({
       {showControls && (
         <div className="absolute top-2 left-2 sm:top-4 sm:left-4 z-[400] space-y-1 sm:space-y-2">
           {/* Map Style Switcher */}
-          <div className="bg-white rounded-lg shadow-lg p-2">
-            <div className="flex space-x-1">
+          <div className="bg-white rounded-lg shadow-lg p-1.5 sm:p-2">
+            <div className="flex space-x-0.5 sm:space-x-1">
               <button
                 onClick={() => setMapStyle('street')}
-                className={`p-2 rounded ${mapStyle === 'street' ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`p-1.5 sm:p-2 rounded ${mapStyle === 'street' ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
                 title="Street Map"
               >
-                <Map className="h-4 w-4" />
+                <Map className="h-3 w-3 sm:h-4 sm:w-4" />
               </button>
               <button
                 onClick={() => setMapStyle('satellite')}
-                className={`p-2 rounded ${mapStyle === 'satellite' ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`p-1.5 sm:p-2 rounded ${mapStyle === 'satellite' ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
                 title="Satellite View"
               >
-                <Satellite className="h-4 w-4" />
+                <Satellite className="h-3 w-3 sm:h-4 sm:w-4" />
               </button>
               <button
                 onClick={() => setMapStyle('terrain')}
-                className={`p-2 rounded ${mapStyle === 'terrain' ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`p-1.5 sm:p-2 rounded ${mapStyle === 'terrain' ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
                 title="Terrain Map"
               >
-                <Mountain className="h-4 w-4" />
+                <Mountain className="h-3 w-3 sm:h-4 sm:w-4" />
               </button>
             </div>
           </div>
