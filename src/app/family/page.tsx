@@ -1,22 +1,37 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { redirect } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import FamilyCircles from '@/components/FamilyCircles'
 
 export default function FamilyPage() {
   const supabase = createClientComponentClient()
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        redirect('/login')
+        router.push('/login')
+        return
       }
+      setLoading(false)
     }
     checkAuth()
-  }, [supabase])
+  }, [supabase, router])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

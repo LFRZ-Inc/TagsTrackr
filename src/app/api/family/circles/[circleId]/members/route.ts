@@ -100,12 +100,25 @@ export async function GET(
           }
         }
 
-        // Get all active devices for this user
+        // Get all active devices for this user that have location sharing enabled
+        // Only show devices if member has location sharing enabled for this circle
+        if (!member.location_sharing_enabled) {
+          return {
+            ...member,
+            devices: [],
+            current_location: null,
+            is_sharing: false,
+            device_count: 0,
+            active_device_count: 0
+          }
+        }
+
         const { data: devices, error: devicesError } = await supabase
           .from('personal_devices')
           .select('id, device_name, device_type, device_model, battery_level, last_ping_at, location_sharing_active')
           .eq('user_id', member.users.id)
           .eq('is_active', true)
+          .eq('location_sharing_active', true) // Only show devices actively sharing location
 
         if (devicesError || !devices || devices.length === 0) {
           return {
