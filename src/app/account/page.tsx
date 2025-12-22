@@ -32,6 +32,7 @@ import { supabase } from '@/lib/supabase'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import AdBanner from '@/components/ads/AdBanner'
 import ProductTierSelection from '@/components/ProductTierSelection'
+import FamilyCircles from '@/components/FamilyCircles'
 
 interface UserProfile {
   id: string
@@ -878,9 +879,14 @@ export default function AccountPage() {
 
             {/* Other tabs would go here */}
             {activeTab === 'sharing' && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Family Sharing</h2>
-                <p className="text-gray-600">Family sharing component would be integrated here.</p>
+              <div className="space-y-6">
+                <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                  <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Family Circles</h2>
+                  <p className="text-sm text-gray-600 mb-6">
+                    Create family circles to share locations with your loved ones. All members in a circle can see each other's locations in real-time.
+                  </p>
+                  <FamilyCircles />
+                </div>
               </div>
             )}
 

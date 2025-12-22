@@ -114,7 +114,14 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
 
       if (response.ok) {
         const data = await response.json()
-        alert(data.message || 'Invitation sent!')
+        const inviteLink = data.invitation?.invite_link
+        if (inviteLink) {
+          // Copy link to clipboard
+          navigator.clipboard.writeText(inviteLink)
+          alert(`Invitation sent! Invitation link copied to clipboard:\n\n${inviteLink}\n\nShare this link with ${inviteEmail}`)
+        } else {
+          alert(data.message || 'Invitation sent!')
+        }
         setShowInviteModal(false)
         setInviteEmail('')
         setInviteMessage('')
