@@ -121,13 +121,19 @@ export async function POST(request: NextRequest) {
     // Create new device - try with auth client first (respects RLS with proper session)
     console.log('➕ [API] Creating new device...')
     
+    // Truncate fields to match database constraints (VARCHAR limits)
+    const truncatedHardwareFingerprint = hardware_fingerprint.substring(0, 100)
+    const truncatedDeviceName = device_name.substring(0, 100)
+    const truncatedDeviceModel = (device_model || 'Unknown').substring(0, 100)
+    const truncatedDeviceOS = (device_os || 'Unknown').substring(0, 50)
+    
     const deviceData = {
       user_id: user.id,
       device_type,
-      device_name,
-      hardware_fingerprint,
-      device_model: device_model || 'Unknown',
-      device_os: device_os || 'Unknown',
+      device_name: truncatedDeviceName,
+      hardware_fingerprint: truncatedHardwareFingerprint,
+      device_model: truncatedDeviceModel,
+      device_os: truncatedDeviceOS,
       is_active: true,
       location_sharing_enabled: false,
       sharing_enabled: true,
@@ -148,10 +154,10 @@ export async function POST(request: NextRequest) {
     const { data: functionResult, error: functionError } = await supabaseAuth.rpc('create_personal_device', {
       p_user_id: user.id,
       p_device_type: device_type,
-      p_device_name: device_name,
-      p_hardware_fingerprint: hardware_fingerprint,
-      p_device_model: device_model || 'Unknown',
-      p_device_os: device_os || 'Unknown'
+      p_device_name: truncatedDeviceName,
+      p_hardware_fingerprint: truncatedHardwareFingerprint,
+      p_device_model: truncatedDeviceModel,
+      p_device_os: truncatedDeviceOS
     })
 
     let newDevice, insertError

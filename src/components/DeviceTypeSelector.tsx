@@ -246,12 +246,17 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
         throw new Error('Device type not found');
       }
       
+      // Truncate fields to match database constraints
+      const hardwareFingerprint = generateHardwareFingerprint().substring(0, 100);
+      const truncatedDeviceModel = (deviceModel.trim() || '').substring(0, 100);
+      const truncatedDeviceOS = (deviceOS.trim() || '').substring(0, 50);
+      
       const deviceData = {
         device_type: selectedType,
         device_name: deviceName.trim(),
-        device_model: deviceModel.trim() || undefined,
-        device_os: deviceOS.trim() || undefined,
-        hardware_fingerprint: generateHardwareFingerprint(),
+        device_model: truncatedDeviceModel || undefined,
+        device_os: truncatedDeviceOS || undefined,
+        hardware_fingerprint: hardwareFingerprint,
         browser_fingerprint: generateBrowserFingerprint(),
         user_agent: navigator.userAgent,
         screen_resolution: `${screen.width}x${screen.height}`,
