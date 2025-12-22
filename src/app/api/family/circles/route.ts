@@ -149,11 +149,37 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = createSupabaseClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    
+    // Try to get session first
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    
+    if (sessionError) {
+      console.error('Session error:', sessionError)
     }
+    
+    // If no session, try getUser
+    let user = session?.user
+    if (!user) {
+      const { data: { user: fetchedUser }, error: authError } = await supabase.auth.getUser()
+      if (authError) {
+        console.error('Auth error:', authError)
+        return NextResponse.json({ 
+          error: 'Unauthorized', 
+          details: authError.message 
+        }, { status: 401 })
+      }
+      user = fetchedUser
+    }
+
+    if (!user) {
+      console.error('No user found after auth check')
+      return NextResponse.json({ 
+        error: 'Unauthorized', 
+        details: 'No authenticated user found' 
+      }, { status: 401 })
+    }
+    
+    console.log('Creating circle for user:', user.id, user.email)
 
     const body = await request.json()
     const { name, description, color } = body
@@ -179,8 +205,14 @@ export async function POST(request: NextRequest) {
 
     if (circleError) {
       console.error('Error creating circle:', circleError)
+      console.error('Circle error details:', JSON.stringify(circleError, null, 2))
       return NextResponse.json(
-        { error: 'Failed to create circle' },
+        { 
+          error: 'Failed to create circle',
+          details: circleError.message,
+          code: circleError.code,
+          hint: circleError.hint
+        },
         { status: 500 }
       )
     }
