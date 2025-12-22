@@ -835,7 +835,7 @@ export default function Dashboard() {
     setWatchId(id)
     setIsAutoTracking(true)
     toast.dismiss('auto-track-start')
-    toast.success(`Auto-tracking started! Location will update every ${optimization.pingInterval / 1000}s`, { duration: 3000 })
+    toast.success(`Auto-tracking started! Location will update every ${optimization.updateInterval / 1000}s`, { duration: 3000 })
   }
 
   const stopAutoTracking = async () => {
