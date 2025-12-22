@@ -315,7 +315,7 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
       }
 
       // Request location permission with device-optimized settings
-      const isPhone = selectedDeviceType === 'phone';
+      const isPhone = selectedType === 'phone';
       const permission = await new Promise<boolean>((resolve) => {
         navigator.geolocation.getCurrentPosition(
           () => resolve(true),
