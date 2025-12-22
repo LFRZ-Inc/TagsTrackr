@@ -1196,8 +1196,23 @@ export default function Dashboard() {
                       {/* Update Location Button - Only show for current device */}
                       {(() => {
                         const fingerprint = generateHardwareFingerprint()
-                        const isCurrentDevice = device.hardware_fingerprint === fingerprint || device.id === currentDeviceId
+                        const fingerprintMatch = device.hardware_fingerprint === fingerprint
+                        const deviceIdMatch = device.id === currentDeviceId
+                        const isOwnedByUser = device.user_id === user?.id
+                        // Allow if fingerprint matches, device ID matches, or if owned by user and no other device matches
+                        const isCurrentDevice = fingerprintMatch || deviceIdMatch || (isOwnedByUser && !currentDeviceId)
                         const isThisDeviceTracking = isAutoTracking && device.id === currentDeviceId
+                        
+                        console.log('🔍 [Dashboard] Device UI check:', {
+                          deviceName: device.device_name,
+                          fingerprintMatch,
+                          deviceIdMatch,
+                          isOwnedByUser,
+                          isCurrentDevice,
+                          currentDeviceId,
+                          deviceFingerprint: device.hardware_fingerprint,
+                          generatedFingerprint: fingerprint
+                        })
                         
                         if (!isCurrentDevice) {
                           return (
