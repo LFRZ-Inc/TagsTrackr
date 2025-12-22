@@ -327,7 +327,9 @@ export default function Dashboard() {
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
+            const isPhone = device.device_type === 'phone'
             console.log('✅ [Dashboard] Location received:', pos.coords)
+            console.log(`📍 [Dashboard] Accuracy: ${pos.coords.accuracy}m (${isPhone ? 'GPS' : 'WiFi'})`)
             toast.dismiss(loadingToast)
             resolve(pos)
           },
@@ -357,17 +359,15 @@ export default function Dashboard() {
             }
             reject(err)
           },
-          { 
-            enableHighAccuracy: true, 
-            timeout: 15000, 
-            maximumAge: 0,
-            // Optimize for phone devices (better GPS accuracy)
-            ...(device.device_type === 'phone' ? {
-              enableHighAccuracy: true,
-              timeout: 20000, // Longer timeout for GPS lock
-              maximumAge: 0 // Always get fresh GPS data
-            } : {})
-          }
+          (() => {
+            // Optimize geolocation options based on device type
+            const isPhone = device.device_type === 'phone'
+            return {
+              enableHighAccuracy: true, // Always use high accuracy (GPS for phones)
+              timeout: isPhone ? 20000 : 15000, // Longer timeout for phones (GPS lock takes time)
+              maximumAge: 0 // Always get fresh location
+            }
+          })()
         )
       })
 
