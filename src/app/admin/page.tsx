@@ -187,8 +187,8 @@ export default function AdminDashboard() {
     )
   }
 
-  const totalRevenue = analytics.reduce((sum, item) => sum + item.monthly_revenue, 0)
-  const totalSubscriptions = analytics.reduce((sum, item) => sum + item.active_subscriptions, 0)
+  const totalRevenue = analytics.reduce((sum: number, item: { monthly_revenue: number }) => sum + item.monthly_revenue, 0)
+  const totalSubscriptions = analytics.reduce((sum: number, item: { active_subscriptions: number }) => sum + item.active_subscriptions, 0)
   const activeDevices = inventory.filter(device => device.is_active).length
   const pendingReturns = rentals.filter(rental => rental.returned_at && !rental.return_approved).length
 
