@@ -198,7 +198,13 @@ export async function POST(request: NextRequest) {
       circle_color: color || '#3B82F6'
     })
 
+    if (functionError) {
+      console.error('RPC function error:', functionError)
+      console.error('Function error details:', JSON.stringify(functionError, null, 2))
+    }
+
     if (!functionError && circleId) {
+      console.log('Circle created via function, ID:', circleId)
       // Fetch the created circle
       const { data: circle, error: fetchError } = await supabase
         .from('family_circles')
@@ -209,7 +215,7 @@ export async function POST(request: NextRequest) {
       if (fetchError || !circle) {
         console.error('Error fetching created circle:', fetchError)
         return NextResponse.json(
-          { error: 'Circle created but failed to fetch details' },
+          { error: 'Circle created but failed to fetch details', details: fetchError?.message },
           { status: 500 }
         )
       }
@@ -233,7 +239,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fallback to direct insert if function doesn't exist or fails
-    console.log('Function not available, using direct insert')
+    console.log('Function not available or failed, using direct insert. Error:', functionError?.message)
     const { data: circle, error: circleError } = await supabase
       .from('family_circles')
       .insert({

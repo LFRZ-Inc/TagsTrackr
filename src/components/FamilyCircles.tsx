@@ -86,7 +86,8 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
         }
       } else {
         const error = await response.json()
-        alert(error.error || 'Failed to create circle')
+        console.error('Create circle error:', error)
+        alert(error.details ? `${error.error}: ${error.details}` : error.error || 'Failed to create circle')
       }
     } catch (error) {
       console.error('Error creating circle:', error)
