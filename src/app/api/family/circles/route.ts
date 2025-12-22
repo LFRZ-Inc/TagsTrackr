@@ -34,6 +34,23 @@ function createSupabaseClient() {
   )
 }
 
+function createAdminClient() {
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const { createClient } = require('@supabase/supabase-js')
+    return createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
+  }
+  return null
+}
+
 // GET - Get all circles for the current user
 export async function GET(request: NextRequest) {
   try {
@@ -192,15 +209,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Try using the database function first (bypasses RLS)
-    const { data: circleId, error: functionError } = await supabase.rpc('create_family_circle', {
-      circle_name: name.trim(),
-      circle_description: description?.trim() || null,
-      circle_color: color || '#3B82F6'
-    })
-
-    if (functionError) {
-      console.error('RPC function error:', functionError)
-      console.error('Function error details:', JSON.stringify(functionError, null, 2))
+    let circleId: string | null = null
+    let functionError: any = null
+    
+    try {
+      const rpcResult = await supabase.rpc('create_family_circle', {
+        circle_name: name.trim(),
+        circle_description: description?.trim() || null,
+        circle_color: color || '#3B82F6'
+      })
+      
+      circleId = rpcResult.data
+      functionError = rpcResult.error
+      
+      if (functionError) {
+        console.error('RPC function error:', functionError)
+        console.error('Function error details:', JSON.stringify(functionError, null, 2))
+      }
+    } catch (err) {
+      console.error('RPC call exception:', err)
+      functionError = err
     }
 
     if (!functionError && circleId) {
@@ -238,7 +266,49 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Fallback to direct insert if function doesn't exist or fails
+    // Fallback: Try with admin client if available
+    const adminClient = createAdminClient()
+    if (adminClient) {
+      console.log('Trying with admin client as fallback')
+      try {
+        const { data: adminCircleId, error: adminError } = await adminClient.rpc('create_family_circle', {
+          circle_name: name.trim(),
+          circle_description: description?.trim() || null,
+          circle_color: color || '#3B82F6'
+        })
+        
+        if (!adminError && adminCircleId) {
+          // Fetch with regular client (for RLS)
+          const { data: circle } = await supabase
+            .from('family_circles')
+            .select('*')
+            .eq('id', adminCircleId)
+            .single()
+            
+          if (circle) {
+            const { data: member } = await supabase
+              .from('circle_members')
+              .select('*')
+              .eq('circle_id', circle.id)
+              .eq('user_id', user.id)
+              .single()
+              
+            return NextResponse.json({
+              success: true,
+              circle: {
+                ...circle,
+                members: member ? [member] : []
+              },
+              message: 'Circle created successfully!'
+            })
+          }
+        }
+      } catch (adminErr) {
+        console.error('Admin client error:', adminErr)
+      }
+    }
+
+    // Final fallback to direct insert if function doesn't exist or fails
     console.log('Function not available or failed, using direct insert. Error:', functionError?.message)
     const { data: circle, error: circleError } = await supabase
       .from('family_circles')
