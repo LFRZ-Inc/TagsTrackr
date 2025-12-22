@@ -351,7 +351,131 @@ export default function Dashboard() {
       console.log('✅ [Dashboard] Processed devices for map:', processedDevices)
       console.log('✅ [Dashboard] Devices with locations:', processedDevices.filter(d => d.current_location))
 
-      setDevices(processedDevices)
+      // Fetch devices from circle members
+      let circleMemberDevices: PersonalDevice[] = []
+      try {
+        // Get all circles user is a member of
+        const { data: memberships } = await supabase
+          .from('circle_members')
+          .select(`
+            circle_id,
+            location_sharing_enabled,
+            circles:circle_id(id, name)
+          `)
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .eq('location_sharing_enabled', true)
+
+        if (memberships && memberships.length > 0) {
+          // Get all circle IDs
+          const circleIds = memberships.map(m => m.circle_id)
+
+          // Get all members from these circles
+          const { data: allMembers } = await supabase
+            .from('circle_members')
+            .select(`
+              user_id,
+              location_sharing_enabled,
+              users:user_id(id, email, full_name)
+            `)
+            .in('circle_id', circleIds)
+            .eq('is_active', true)
+            .eq('location_sharing_enabled', true)
+            .neq('user_id', user.id) // Exclude current user
+
+          if (allMembers && allMembers.length > 0) {
+            // Get all user IDs from circle members
+            const memberUserIds = allMembers
+              .map(m => m.users?.id)
+              .filter(Boolean) as string[]
+
+            if (memberUserIds.length > 0) {
+              // Fetch devices from circle members
+              const { data: circleDevicesData } = await supabase
+                .from('personal_devices')
+                .select('*')
+                .in('user_id', memberUserIds)
+                .eq('is_active', true)
+                .eq('location_sharing_active', true)
+
+              if (circleDevicesData && circleDevicesData.length > 0) {
+                // Get device IDs from circle members
+                const circleDeviceIds = circleDevicesData.map(d => d.id)
+
+                // Fetch latest locations for circle member devices
+                if (circleDeviceIds.length > 0) {
+                  const { data: circleLocationsData } = await supabase
+                    .from('location_pings')
+                    .select('device_id, latitude, longitude, accuracy, recorded_at')
+                    .in('device_id', circleDeviceIds)
+                    .order('recorded_at', { ascending: false })
+
+                  if (circleLocationsData) {
+                    // Get only the most recent location per device
+                    const circleLocationMap = new Map()
+                    circleLocationsData.forEach(location => {
+                      if (!circleLocationMap.has(location.device_id)) {
+                        circleLocationMap.set(location.device_id, location)
+                      }
+                    })
+
+                    // Process circle member devices with locations
+                    circleMemberDevices = circleDevicesData.map(device => {
+                      const deviceLocation = circleLocationMap.get(device.id)
+                      let currentLocation = null
+
+                      if (deviceLocation) {
+                        const lat = typeof deviceLocation.latitude === 'string'
+                          ? parseFloat(deviceLocation.latitude)
+                          : Number(deviceLocation.latitude)
+                        const lng = typeof deviceLocation.longitude === 'string'
+                          ? parseFloat(deviceLocation.longitude)
+                          : Number(deviceLocation.longitude)
+
+                        if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+                          currentLocation = {
+                            latitude: lat,
+                            longitude: lng,
+                            accuracy: deviceLocation.accuracy
+                              ? (typeof deviceLocation.accuracy === 'string'
+                                  ? parseFloat(deviceLocation.accuracy)
+                                  : Number(deviceLocation.accuracy))
+                              : undefined,
+                            recorded_at: deviceLocation.recorded_at
+                          }
+                        }
+                      }
+
+                      // Find which member owns this device
+                      const member = allMembers.find(m => m.users?.id === device.user_id)
+                      const memberName = member?.users?.full_name || member?.users?.email || 'Unknown'
+
+                      return {
+                        ...device,
+                        current_location: currentLocation,
+                        // Add metadata to identify as circle member device
+                        is_circle_device: true,
+                        circle_member_name: memberName
+                      }
+                    }).filter(d => d.current_location) // Only include devices with locations
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching circle member devices:', error)
+        // Don't fail the whole fetch if circle devices fail
+      }
+
+      // Combine user's devices with circle member devices
+      const allDevices = [...processedDevices, ...circleMemberDevices]
+      console.log('✅ [Dashboard] Total devices (own + circle):', allDevices.length)
+      console.log('  - Own devices:', processedDevices.length)
+      console.log('  - Circle member devices:', circleMemberDevices.length)
+
+      setDevices(allDevices)
 
       // Also fetch tags for backward compatibility
       const { data: tagsData, error: tagsError } = await supabase
