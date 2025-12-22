@@ -320,11 +320,20 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
       }
 
       // Request location permission with device-optimized settings
+      // This will show the permission prompt on mobile even if previously denied
       const isPhone = selectedType === 'phone';
       const permission = await new Promise<boolean>((resolve) => {
         navigator.geolocation.getCurrentPosition(
           () => resolve(true),
-          () => resolve(false),
+          (error) => {
+            // Log the error for debugging
+            if (error.code === 1) {
+              console.warn('Location permission denied. User may need to enable in browser settings.');
+            } else {
+              console.warn('Location error:', error.message);
+            }
+            resolve(false);
+          },
           { 
             timeout: isPhone ? 20000 : 10000, // Longer timeout for phones (GPS lock)
             enableHighAccuracy: true // Always request high accuracy
@@ -333,7 +342,9 @@ export default function DeviceTypeSelector({ user, onDeviceAdded, className = ''
       });
 
       if (!permission) {
-        console.warn('Location permission denied');
+        console.warn('Location permission denied or unavailable');
+        // Don't return early - still try to send initial ping if we have cached location
+        // The permission prompt will have been shown, user can try again
         return;
       }
 

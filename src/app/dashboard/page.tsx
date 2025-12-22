@@ -319,11 +319,13 @@ export default function Dashboard() {
 
     try {
       // Always try to get location - this will trigger browser permission prompt if needed
+      // On mobile, this will show the permission prompt even if previously denied
       // Don't check permission status first as it might prevent the prompt from showing
       const loadingToast = toast.loading('Requesting location access...')
 
       // Request location - this will trigger the browser's permission prompt
-      // The browser will show the prompt if permission hasn't been set or was previously denied
+      // On mobile browsers, this may show the prompt again even if previously denied
+      // Desktop browsers typically require manual settings change after denial
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
@@ -339,11 +341,14 @@ export default function Dashboard() {
             
             // Show helpful error messages
             if (err.code === 1) {
-              // Permission denied - browser won't show prompt again until user changes settings
-              toast.error(
-                'Location access denied. Please click the lock icon in your browser address bar and allow location access, then try again.',
-                { duration: 8000 }
-              )
+              // Permission denied
+              // On mobile: Browser may allow re-prompting, guide user to try again
+              // On desktop: User needs to manually change browser settings
+              const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+              const errorMsg = isMobile
+                ? 'Location access denied. Please allow location access when prompted, or enable it in your browser settings and try again.'
+                : 'Location access denied. Please click the lock icon in your browser address bar and allow location access, then try again.'
+              toast.error(errorMsg, { duration: 8000 })
             } else if (err.code === 2) {
               const errorMsg = device.device_type === 'phone'
                 ? 'Location unavailable. Please check your GPS is enabled and try going outdoors for better signal.'
