@@ -62,6 +62,13 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
     }
 
     try {
+      // Get current user to pass user ID
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert('Please log in to create a circle')
+        return
+      }
+
       const response = await fetch('/api/family/circles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -69,7 +76,8 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
         body: JSON.stringify({
           name: newCircleName,
           description: newCircleDescription || null,
-          color: newCircleColor
+          color: newCircleColor,
+          userId: user.id // Pass user ID from client
         })
       })
 
