@@ -337,9 +337,9 @@ export default function InteractiveMap({
 
   return (
     <div className="w-full h-full rounded-lg overflow-hidden shadow-lg relative" style={{ height }}>
-      {/* Map Controls */}
+      {/* Map Controls - Fixed z-index to only overlay map, not other UI */}
       {showControls && (
-        <div className="absolute top-4 left-4 z-[1000] space-y-2">
+        <div className="absolute top-2 left-2 sm:top-4 sm:left-4 z-[400] space-y-1 sm:space-y-2">
           {/* Map Style Switcher */}
           <div className="bg-white rounded-lg shadow-lg p-2">
             <div className="flex space-x-1">
