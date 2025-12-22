@@ -27,12 +27,29 @@ class LocationTrackingService {
     enableHighAccuracy: true,
     timeout: 15000,
     maximumAge: 60000,
-    pingInterval: 30000 // 30 seconds
+    pingInterval: 30000 // 30 seconds (default, optimized per device type)
+  }
+
+  // Detect if device is a phone for optimized tracking
+  private isPhoneDevice(): boolean {
+    if (typeof window === 'undefined') return false
+    const userAgent = navigator.userAgent.toLowerCase()
+    return userAgent.includes('mobile') || 
+           userAgent.includes('android') || 
+           userAgent.includes('iphone') ||
+           userAgent.includes('ipod')
   }
 
   constructor(options?: Partial<TrackingOptions>) {
     if (options) {
       this.options = { ...this.options, ...options }
+    }
+    
+    // Optimize for phone devices (better GPS, more frequent updates)
+    if (this.isPhoneDevice() && !options?.pingInterval) {
+      this.options.pingInterval = 20000 // 20 seconds for phones (more frequent)
+      this.options.enableHighAccuracy = true // Always use GPS on phones
+      this.options.maximumAge = 30000 // 30 seconds (fresher data)
     }
   }
 
@@ -188,8 +205,9 @@ class LocationTrackingService {
       newLocation.longitude
     )
 
-    // Consider significant if moved more than 10 meters
-    return distance > 10
+    // Phones have better GPS, so use smaller threshold (5m vs 10m for laptops)
+    const threshold = this.isPhoneDevice() ? 5 : 10
+    return distance > threshold
   }
 
   private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {

@@ -343,9 +343,15 @@ export default function Dashboard() {
                 { duration: 8000 }
               )
             } else if (err.code === 2) {
-              toast.error('Location unavailable. Please check your GPS/WiFi connection.', { duration: 5000 })
+              const errorMsg = device.device_type === 'phone'
+                ? 'Location unavailable. Please check your GPS is enabled and try going outdoors for better signal.'
+                : 'Location unavailable. Please check your GPS/WiFi connection.'
+              toast.error(errorMsg, { duration: 5000 })
             } else if (err.code === 3) {
-              toast.error('Location request timed out. Please try again.', { duration: 5000 })
+              const errorMsg = device.device_type === 'phone'
+                ? 'GPS lock timed out. Try going outdoors or wait a bit longer for GPS signal.'
+                : 'Location request timed out. Please try again.'
+              toast.error(errorMsg, { duration: 5000 })
             } else {
               toast.error(`Failed to get location: ${err.message || 'Unknown error'}`, { duration: 5000 })
             }
@@ -354,7 +360,13 @@ export default function Dashboard() {
           { 
             enableHighAccuracy: true, 
             timeout: 15000, 
-            maximumAge: 0
+            maximumAge: 0,
+            // Optimize for phone devices (better GPS accuracy)
+            ...(device.device_type === 'phone' ? {
+              enableHighAccuracy: true,
+              timeout: 20000, // Longer timeout for GPS lock
+              maximumAge: 0 // Always get fresh GPS data
+            } : {})
           }
         )
       })
