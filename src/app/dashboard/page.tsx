@@ -30,6 +30,8 @@ interface PersonalDevice {
   updated_at: string
   metadata?: any
   user_id: string
+  is_circle_device?: boolean // Indicates if this device belongs to a circle member
+  circle_member_name?: string // Name of the circle member who owns this device
   current_location?: {
     latitude: number
     longitude: number
