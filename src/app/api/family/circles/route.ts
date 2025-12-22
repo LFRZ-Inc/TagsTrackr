@@ -170,98 +170,25 @@ export async function POST(request: NextRequest) {
     // Get user - this should work with cookies from the request
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
+    // If getUser fails, try getSession as fallback
+    let authenticatedUser = user
     if (authError || !user) {
-      console.error('Auth error:', authError)
-      console.error('User:', user)
-      
-      // Try to get session as fallback
+      console.error('getUser failed, trying getSession:', authError?.message)
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError) {
-        console.error('Session error:', sessionError)
-      }
       
-      if (!session?.user) {
+      if (sessionError || !session?.user) {
+        console.error('Session also failed:', sessionError?.message)
         return NextResponse.json({ 
           error: 'Unauthorized', 
-          details: authError?.message || 'Auth session missing! Please log in again.' 
+          details: authError?.message || sessionError?.message || 'Auth session missing! Please log in again.' 
         }, { status: 401 })
       }
       
-      // Use session user if getUser failed
-      const sessionUser = session.user
-      console.log('Using session user:', sessionUser.id, sessionUser.email)
-      
-      // Continue with session user
-      const body = await request.json()
-      const { name, description, color } = body
-
-      if (!name || name.trim().length === 0) {
-        return NextResponse.json(
-          { error: 'Circle name is required' },
-          { status: 400 }
-        )
-      }
-
-      // Use admin client to bypass RLS
-      const adminClient = createAdminClient()
-      if (adminClient) {
-        console.log('Using admin client to create circle')
-        const { data: adminCircle, error: adminInsertError } = await adminClient
-          .from('family_circles')
-          .insert({
-            name: name.trim(),
-            description: description?.trim() || null,
-            created_by: sessionUser.id,
-            color: color || '#3B82F6'
-          })
-          .select()
-          .single()
-
-        if (!adminInsertError && adminCircle) {
-          // Add creator as admin member
-          await adminClient
-            .from('circle_members')
-            .insert({
-              circle_id: adminCircle.id,
-              user_id: sessionUser.id,
-              role: 'admin',
-              location_sharing_enabled: true
-            })
-
-          // Fetch with regular client for RLS
-          const { data: circle } = await supabase
-            .from('family_circles')
-            .select('*')
-            .eq('id', adminCircle.id)
-            .single()
-
-          if (circle) {
-            const { data: member } = await supabase
-              .from('circle_members')
-              .select('*')
-              .eq('circle_id', circle.id)
-              .eq('user_id', sessionUser.id)
-              .single()
-
-            return NextResponse.json({
-              success: true,
-              circle: {
-                ...circle,
-                members: member ? [member] : []
-              },
-              message: 'Circle created successfully!'
-            })
-          }
-        }
-      }
-      
-      return NextResponse.json({ 
-        error: 'Unauthorized', 
-        details: 'Could not authenticate user' 
-      }, { status: 401 })
+      authenticatedUser = session.user
+      console.log('Using session user:', authenticatedUser.id, authenticatedUser.email)
     }
     
-    console.log('Creating circle for user:', user.id, user.email)
+    console.log('Creating circle for user:', authenticatedUser.id, authenticatedUser.email)
 
     const body = await request.json()
     const { name, description, color } = body
@@ -355,7 +282,7 @@ export async function POST(request: NextRequest) {
               .from('circle_members')
               .select('*')
               .eq('circle_id', circle.id)
-              .eq('user_id', user.id)
+              .eq('user_id', authenticatedUser.id)
               .single()
               
             return NextResponse.json({
@@ -393,7 +320,7 @@ export async function POST(request: NextRequest) {
           .from('circle_members')
           .insert({
             circle_id: adminCircle.id,
-            user_id: user.id,
+            user_id: authenticatedUser.id,
             role: 'admin',
             location_sharing_enabled: true
           })
@@ -412,7 +339,7 @@ export async function POST(request: NextRequest) {
             .from('circle_members')
             .select('*')
             .eq('circle_id', circle.id)
-            .eq('user_id', user.id)
+            .eq('user_id', authenticatedUser.id)
             .single()
 
           return NextResponse.json({
@@ -434,7 +361,7 @@ export async function POST(request: NextRequest) {
       .insert({
         name: name.trim(),
         description: description?.trim() || null,
-        created_by: user.id,
+        created_by: authenticatedUser.id,
         color: color || '#3B82F6'
       })
       .select()
