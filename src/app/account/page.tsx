@@ -515,10 +515,55 @@ export default function AccountPage() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Account Settings</h1>
-          <p className="text-gray-600 mt-2">Manage your TagsTrackr account and preferences</p>
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+        {/* Error/Success Messages */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start">
+            <AlertCircle className="h-5 w-5 text-red-600 mr-3 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="font-medium text-red-800">Error</h3>
+              <p className="text-sm text-red-700 mt-1">{error}</p>
+            </div>
+            <button
+              onClick={() => setError('')}
+              className="text-red-400 hover:text-red-600 ml-4"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start">
+            <CheckCircle className="h-5 w-5 text-green-600 mr-3 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="font-medium text-green-800">Success</h3>
+              <p className="text-sm text-green-700 mt-1">{success}</p>
+            </div>
+            <button
+              onClick={() => setSuccess('')}
+              className="text-green-400 hover:text-green-600 ml-4"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Account Settings</h1>
+              <p className="text-sm sm:text-base text-gray-600 mt-1 sm:mt-2">Manage your TagsTrackr account and preferences</p>
+            </div>
+            {/* Quick Logout Button - Mobile */}
+            <button
+              onClick={handleLogout}
+              className="sm:hidden bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center justify-center text-sm"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Sign Out
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
