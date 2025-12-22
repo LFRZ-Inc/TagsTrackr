@@ -167,32 +167,97 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createSupabaseClient()
     
-    // Try to get session first
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-    
-    if (sessionError) {
-      console.error('Session error:', sessionError)
-    }
-    
-    // If no session, try getUser
-    let user = session?.user || undefined
-    if (!user) {
-      const { data: { user: fetchedUser }, error: authError } = await supabase.auth.getUser()
-      if (authError) {
-        console.error('Auth error:', authError)
+    // Get user - this should work with cookies from the request
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      console.error('Auth error:', authError)
+      console.error('User:', user)
+      
+      // Try to get session as fallback
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) {
+        console.error('Session error:', sessionError)
+      }
+      
+      if (!session?.user) {
         return NextResponse.json({ 
           error: 'Unauthorized', 
-          details: authError.message 
+          details: authError?.message || 'Auth session missing! Please log in again.' 
         }, { status: 401 })
       }
-      user = fetchedUser || undefined
-    }
+      
+      // Use session user if getUser failed
+      const sessionUser = session.user
+      console.log('Using session user:', sessionUser.id, sessionUser.email)
+      
+      // Continue with session user
+      const body = await request.json()
+      const { name, description, color } = body
 
-    if (!user) {
-      console.error('No user found after auth check')
+      if (!name || name.trim().length === 0) {
+        return NextResponse.json(
+          { error: 'Circle name is required' },
+          { status: 400 }
+        )
+      }
+
+      // Use admin client to bypass RLS
+      const adminClient = createAdminClient()
+      if (adminClient) {
+        console.log('Using admin client to create circle')
+        const { data: adminCircle, error: adminInsertError } = await adminClient
+          .from('family_circles')
+          .insert({
+            name: name.trim(),
+            description: description?.trim() || null,
+            created_by: sessionUser.id,
+            color: color || '#3B82F6'
+          })
+          .select()
+          .single()
+
+        if (!adminInsertError && adminCircle) {
+          // Add creator as admin member
+          await adminClient
+            .from('circle_members')
+            .insert({
+              circle_id: adminCircle.id,
+              user_id: sessionUser.id,
+              role: 'admin',
+              location_sharing_enabled: true
+            })
+
+          // Fetch with regular client for RLS
+          const { data: circle } = await supabase
+            .from('family_circles')
+            .select('*')
+            .eq('id', adminCircle.id)
+            .single()
+
+          if (circle) {
+            const { data: member } = await supabase
+              .from('circle_members')
+              .select('*')
+              .eq('circle_id', circle.id)
+              .eq('user_id', sessionUser.id)
+              .single()
+
+            return NextResponse.json({
+              success: true,
+              circle: {
+                ...circle,
+                members: member ? [member] : []
+              },
+              message: 'Circle created successfully!'
+            })
+          }
+        }
+      }
+      
       return NextResponse.json({ 
         error: 'Unauthorized', 
-        details: 'No authenticated user found' 
+        details: 'Could not authenticate user' 
       }, { status: 401 })
     }
     
