@@ -340,105 +340,12 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // Fallback: Try direct insert with regular client (will fail if RLS blocks)
-    if (adminClient) {
-      console.log('Trying direct insert with admin client')
-      const { data: adminCircle, error: adminInsertError } = await adminClient
-        .from('family_circles')
-          .insert({
-            name: name.trim(),
-            description: description?.trim() || null,
-            created_by: targetUserId,
-            color: color || '#3B82F6'
-          })
-        .select()
-        .single()
-
-      if (!adminInsertError && adminCircle) {
-        // Add creator as admin member
-        await adminClient
-          .from('circle_members')
-          .insert({
-            circle_id: adminCircle.id,
-            user_id: targetUserId,
-            role: 'admin',
-            location_sharing_enabled: true
-          })
-          .select()
-          .single()
-
-        // Fetch with regular client for RLS
-        const { data: circle } = await supabase
-          .from('family_circles')
-          .select('*')
-          .eq('id', adminCircle.id)
-          .single()
-
-        if (circle) {
-          const { data: member } = await supabase
-            .from('circle_members')
-            .select('*')
-            .eq('circle_id', circle.id)
-            .eq('user_id', targetUserId)
-            .single()
-
-          return NextResponse.json({
-            success: true,
-            circle: {
-              ...circle,
-              members: member ? [member] : []
-            },
-            message: 'Circle created successfully!'
-          })
-        }
-      }
-    }
-
-    // Last resort: Try direct insert with regular client
-    console.log('Trying direct insert with regular client. Previous errors:', functionError?.message)
-    const { data: circle, error: circleError } = await supabase
-      .from('family_circles')
-      .insert({
-        name: name.trim(),
-        description: description?.trim() || null,
-        created_by: targetUserId,
-        color: color || '#3B82F6'
-      })
-      .select()
-      .single()
-
-    if (circleError) {
-      console.error('Error creating circle:', circleError)
-      console.error('Circle error details:', JSON.stringify(circleError, null, 2))
-      return NextResponse.json(
-        { 
-          error: 'Failed to create circle',
-          details: circleError.message,
-          code: circleError.code,
-          hint: circleError.hint,
-          functionError: functionError?.message
-        },
-        { status: 500 }
-      )
-    }
-
-    // The trigger will automatically add the creator as admin member
-    // But let's verify it was created
-    const { data: member } = await supabase
-      .from('circle_members')
-      .select('*')
-      .eq('circle_id', circle.id)
-      .eq('user_id', user.id)
-      .single()
-
+    // If we reach here, admin client failed or doesn't exist
+    console.error('❌ [API] All circle creation methods failed')
     return NextResponse.json({
-      success: true,
-      circle: {
-        ...circle,
-        members: member ? [member] : []
-      },
-      message: 'Circle created successfully!'
-    })
+      error: 'Failed to create circle',
+      details: 'Unable to create circle. Please try again or contact support.'
+    }, { status: 500 })
   } catch (error) {
     console.error('❌ [API] Create circle error:', error)
     console.error('❌ [API] Error details:', error instanceof Error ? error.message : String(error))
