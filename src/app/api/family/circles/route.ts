@@ -165,33 +165,9 @@ export async function GET(request: NextRequest) {
 // POST - Create a new circle
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createSupabaseClient()
-    
-    // Get user - this should work with cookies from the request
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    // If getUser fails, try getSession as fallback
-    let authenticatedUser = user
-    if (authError || !user) {
-      console.error('getUser failed, trying getSession:', authError?.message)
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      
-      if (sessionError || !session?.user) {
-        console.error('Session also failed:', sessionError?.message)
-        return NextResponse.json({ 
-          error: 'Unauthorized', 
-          details: authError?.message || sessionError?.message || 'Auth session missing! Please log in again.' 
-        }, { status: 401 })
-      }
-      
-      authenticatedUser = session.user
-      console.log('Using session user:', authenticatedUser.id, authenticatedUser.email)
-    }
-    
-    console.log('Creating circle for user:', authenticatedUser.id, authenticatedUser.email)
-
+    // Parse request body first to get userId from client
     const body = await request.json()
-    const { name, description, color } = body
+    const { name, description, color, userId } = body
 
     if (!name || name.trim().length === 0) {
       return NextResponse.json(
@@ -199,6 +175,40 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Use userId from request body if provided (from client), otherwise try server auth
+    let targetUserId: string | null = userId || null
+
+    // Try to get user from server-side auth as fallback/verification
+    const supabase = createSupabaseClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    // If we have userId from client, use it. Otherwise try server auth
+    if (!targetUserId) {
+      if (user) {
+        targetUserId = user.id
+        console.log('Using authenticated user:', user.id, user.email)
+      } else {
+        // Try session as last resort
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        if (session?.user) {
+          targetUserId = session.user.id
+          console.log('Using session user:', session.user.id, session.user.email)
+        }
+      }
+    } else {
+      console.log('Using userId from client request:', targetUserId)
+    }
+    
+    if (!targetUserId) {
+      console.error('No user ID available. Auth error:', authError?.message)
+      return NextResponse.json({ 
+        error: 'Unauthorized', 
+        details: 'User ID is required. Please log in and try again.' 
+      }, { status: 401 })
+    }
+
+    console.log('Creating circle for user:', targetUserId)
 
     // Try using the database function first (bypasses RLS)
     let circleId: string | null = null
