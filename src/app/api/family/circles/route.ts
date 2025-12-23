@@ -371,7 +371,7 @@ export async function POST(request: NextRequest) {
       .insert({
         name: name.trim(),
         description: description?.trim() || null,
-        created_by: authenticatedUser.id,
+        created_by: targetUserId,
         color: color || '#3B82F6'
       })
       .select()
