@@ -235,77 +235,109 @@ export async function POST(request: NextRequest) {
 
     // Use admin client to bypass RLS (most reliable method)
     const adminClient = createAdminClient()
-    if (adminClient) {
-      console.log('Using admin client to create circle')
-      try {
-        const { data: adminCircle, error: adminInsertError } = await adminClient
-          .from('family_circles')
-          .insert({
-            name: name.trim(),
-            description: description?.trim() || null,
-            created_by: targetUserId,
-            color: color || '#3B82F6'
-          })
-          .select()
+    if (!adminClient) {
+      console.error('❌ [API] Admin client not available - SUPABASE_SERVICE_ROLE_KEY not set')
+      return NextResponse.json({
+        error: 'Server configuration error',
+        details: 'Admin client not available. Please contact support.'
+      }, { status: 500 })
+    }
+
+    console.log('✅ [API] Using admin client to create circle')
+    try {
+      const { data: adminCircle, error: adminInsertError } = await adminClient
+        .from('family_circles')
+        .insert({
+          name: name.trim(),
+          description: description?.trim() || null,
+          created_by: targetUserId,
+          color: color || '#3B82F6'
+        })
+        .select()
+        .single()
+
+      if (adminInsertError) {
+        console.error('❌ [API] Admin insert error:', adminInsertError)
+        console.error('❌ [API] Error details:', JSON.stringify(adminInsertError, null, 2))
+        return NextResponse.json({
+          error: 'Failed to create circle',
+          details: adminInsertError.message,
+          code: adminInsertError.code,
+          hint: adminInsertError.hint
+        }, { status: 500 })
+      }
+
+      if (!adminCircle) {
+        console.error('❌ [API] Circle insert returned no data')
+        return NextResponse.json({
+          error: 'Failed to create circle',
+          details: 'Circle was not created'
+        }, { status: 500 })
+      }
+
+      console.log('✅ [API] Circle created, ID:', adminCircle.id)
+      
+      // Add creator as admin member
+      const { error: memberError } = await adminClient
+        .from('circle_members')
+        .insert({
+          circle_id: adminCircle.id,
+          user_id: targetUserId,
+          role: 'admin',
+          location_sharing_enabled: true
+        })
+
+      if (memberError) {
+        console.error('⚠️ [API] Error adding member (circle still created):', memberError)
+        // Don't fail - circle was created, member can be added later
+      } else {
+        console.log('✅ [API] Creator added as admin member')
+      }
+
+      // Try to fetch with regular client (for RLS) to get full circle data
+      const supabase = createSupabaseClient()
+      const { data: circle } = await supabase
+        .from('family_circles')
+        .select('*')
+        .eq('id', adminCircle.id)
+        .single()
+
+      if (circle) {
+        const { data: member } = await supabase
+          .from('circle_members')
+          .select('*')
+          .eq('circle_id', circle.id)
+          .eq('user_id', targetUserId)
           .single()
 
-        if (!adminInsertError && adminCircle) {
-          console.log('Circle created, ID:', adminCircle.id)
-          
-          // Add creator as admin member
-          const { error: memberError } = await adminClient
-            .from('circle_members')
-            .insert({
-              circle_id: adminCircle.id,
-              user_id: targetUserId,
-              role: 'admin',
-              location_sharing_enabled: true
-            })
-
-          if (memberError) {
-            console.error('Error adding member:', memberError)
-          }
-
-          // Fetch with regular client (for RLS) to get full circle data
-          const { data: circle } = await supabase
-            .from('family_circles')
-            .select('*')
-            .eq('id', adminCircle.id)
-            .single()
-
-          if (circle) {
-            const { data: member } = await supabase
-              .from('circle_members')
-              .select('*')
-              .eq('circle_id', circle.id)
-              .eq('user_id', targetUserId)
-              .single()
-
-            return NextResponse.json({
-              success: true,
-              circle: {
-                ...circle,
-                members: member ? [member] : []
-              },
-              message: 'Circle created successfully!'
-            })
-          } else {
-            // If RLS blocks fetch, return what we have
-            return NextResponse.json({
-              success: true,
-              circle: {
-                ...adminCircle,
-                members: []
-              },
-              message: 'Circle created successfully!'
-            })
-          }
-        } else {
-          console.error('Admin insert error:', adminInsertError)
-        }
-      } catch (adminErr) {
-        console.error('Admin client exception:', adminErr)
+        return NextResponse.json({
+          success: true,
+          circle: {
+            ...circle,
+            members: member ? [member] : []
+          },
+          message: 'Circle created successfully!'
+        })
+      } else {
+        // If RLS blocks fetch, return what we have from admin client
+        console.log('⚠️ [API] RLS blocked fetch, returning admin circle data')
+        return NextResponse.json({
+          success: true,
+          circle: {
+            ...adminCircle,
+            members: []
+          },
+          message: 'Circle created successfully!'
+        })
       }
+    } catch (adminErr) {
+      console.error('❌ [API] Admin client exception:', adminErr)
+      console.error('❌ [API] Exception details:', adminErr instanceof Error ? adminErr.message : String(adminErr))
+      console.error('❌ [API] Stack:', adminErr instanceof Error ? adminErr.stack : 'No stack')
+      return NextResponse.json({
+        error: 'Failed to create circle',
+        details: adminErr instanceof Error ? adminErr.message : 'Unknown error occurred'
+      }, { status: 500 })
     }
 
     // Fallback: Try direct insert with regular client (will fail if RLS blocks)
