@@ -292,7 +292,7 @@ export async function POST(request: NextRequest) {
               .from('circle_members')
               .select('*')
               .eq('circle_id', circle.id)
-              .eq('user_id', authenticatedUser.id)
+              .eq('user_id', targetUserId)
               .single()
               
             return NextResponse.json({
