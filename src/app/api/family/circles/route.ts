@@ -210,83 +210,46 @@ export async function POST(request: NextRequest) {
 
     console.log('Creating circle for user:', targetUserId)
 
-    // Try using the database function first (bypasses RLS)
-    let circleId: string | null = null
-    let functionError: any = null
-    
-    try {
-      const rpcResult = await supabase.rpc('create_family_circle', {
-        circle_name: name.trim(),
-        circle_description: description?.trim() || null,
-        circle_color: color || '#3B82F6'
-      })
-      
-      circleId = rpcResult.data
-      functionError = rpcResult.error
-      
-      if (functionError) {
-        console.error('RPC function error:', functionError)
-        console.error('Function error details:', JSON.stringify(functionError, null, 2))
-      }
-    } catch (err) {
-      console.error('RPC call exception:', err)
-      functionError = err
-    }
-
-    if (!functionError && circleId) {
-      console.log('Circle created via function, ID:', circleId)
-      // Fetch the created circle
-      const { data: circle, error: fetchError } = await supabase
-        .from('family_circles')
-        .select('*')
-        .eq('id', circleId)
-        .single()
-
-      if (fetchError || !circle) {
-        console.error('Error fetching created circle:', fetchError)
-        return NextResponse.json(
-          { error: 'Circle created but failed to fetch details', details: fetchError?.message },
-          { status: 500 }
-        )
-      }
-
-      // Get the member record
-      const { data: member } = await supabase
-        .from('circle_members')
-        .select('*')
-        .eq('circle_id', circle.id)
-        .eq('user_id', targetUserId)
-        .single()
-
-      return NextResponse.json({
-        success: true,
-        circle: {
-          ...circle,
-          members: member ? [member] : []
-        },
-        message: 'Circle created successfully!'
-      })
-    }
-
-    // Fallback: Try with admin client if available
+    // Use admin client to bypass RLS (most reliable method)
     const adminClient = createAdminClient()
     if (adminClient) {
-      console.log('Trying with admin client as fallback')
+      console.log('Using admin client to create circle')
       try {
-        const { data: adminCircleId, error: adminError } = await adminClient.rpc('create_family_circle', {
-          circle_name: name.trim(),
-          circle_description: description?.trim() || null,
-          circle_color: color || '#3B82F6'
-        })
-        
-        if (!adminError && adminCircleId) {
-          // Fetch with regular client (for RLS)
+        const { data: adminCircle, error: adminInsertError } = await adminClient
+          .from('family_circles')
+          .insert({
+            name: name.trim(),
+            description: description?.trim() || null,
+            created_by: targetUserId,
+            color: color || '#3B82F6'
+          })
+          .select()
+          .single()
+
+        if (!adminInsertError && adminCircle) {
+          console.log('Circle created, ID:', adminCircle.id)
+          
+          // Add creator as admin member
+          const { error: memberError } = await adminClient
+            .from('circle_members')
+            .insert({
+              circle_id: adminCircle.id,
+              user_id: targetUserId,
+              role: 'admin',
+              location_sharing_enabled: true
+            })
+
+          if (memberError) {
+            console.error('Error adding member:', memberError)
+          }
+
+          // Fetch with regular client (for RLS) to get full circle data
           const { data: circle } = await supabase
             .from('family_circles')
             .select('*')
-            .eq('id', adminCircleId)
+            .eq('id', adminCircle.id)
             .single()
-            
+
           if (circle) {
             const { data: member } = await supabase
               .from('circle_members')
@@ -294,7 +257,7 @@ export async function POST(request: NextRequest) {
               .eq('circle_id', circle.id)
               .eq('user_id', targetUserId)
               .single()
-              
+
             return NextResponse.json({
               success: true,
               circle: {
@@ -303,14 +266,26 @@ export async function POST(request: NextRequest) {
               },
               message: 'Circle created successfully!'
             })
+          } else {
+            // If RLS blocks fetch, return what we have
+            return NextResponse.json({
+              success: true,
+              circle: {
+                ...adminCircle,
+                members: []
+              },
+              message: 'Circle created successfully!'
+            })
           }
+        } else {
+          console.error('Admin insert error:', adminInsertError)
         }
       } catch (adminErr) {
-        console.error('Admin client error:', adminErr)
+        console.error('Admin client exception:', adminErr)
       }
     }
 
-    // Final fallback: Try direct insert with admin client if available
+    // Fallback: Try direct insert with regular client (will fail if RLS blocks)
     if (adminClient) {
       console.log('Trying direct insert with admin client')
       const { data: adminCircle, error: adminInsertError } = await adminClient
