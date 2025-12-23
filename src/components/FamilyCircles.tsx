@@ -64,11 +64,18 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
 
     try {
       // Get current user to pass user ID
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError) {
+        console.error('Error getting user:', userError)
+        alert('Please log in to create a circle')
+        return
+      }
       if (!user) {
         alert('Please log in to create a circle')
         return
       }
+
+      console.log('📤 [Client] Sending circle creation request with userId:', user.id)
 
       const response = await fetch('/api/family/circles', {
         method: 'POST',

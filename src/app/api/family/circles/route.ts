@@ -167,6 +167,7 @@ export async function POST(request: NextRequest) {
   try {
     // Parse request body first to get userId from client
     const body = await request.json()
+    console.log('📥 [API] Request body received:', { name: body.name, hasUserId: !!body.userId, userId: body.userId })
     const { name, description, color, userId } = body
 
     if (!name || name.trim().length === 0) {
@@ -181,24 +182,24 @@ export async function POST(request: NextRequest) {
 
     // If userId is provided from client, use it directly (no server auth needed)
     if (targetUserId) {
-      console.log('Using userId from client request:', targetUserId)
+      console.log('✅ [API] Using userId from client request:', targetUserId)
     } else {
       // Only try server auth if userId not provided
-      console.log('No userId in request, trying server auth...')
+      console.log('⚠️ [API] No userId in request, trying server auth...')
       const supabase = createSupabaseClient()
       const { data: { user }, error: authError } = await supabase.auth.getUser()
 
       if (user) {
         targetUserId = user.id
-        console.log('Using authenticated user:', user.id, user.email)
+        console.log('✅ [API] Using authenticated user:', user.id, user.email)
       } else {
         // Try session as last resort
         const { data: { session }, error: sessionError } = await supabase.auth.getSession()
         if (session?.user) {
           targetUserId = session.user.id
-          console.log('Using session user:', session.user.id, session.user.email)
+          console.log('✅ [API] Using session user:', session.user.id, session.user.email)
         } else {
-          console.error('No user ID available. Auth error:', authError?.message, sessionError?.message)
+          console.error('❌ [API] No user ID available. Auth error:', authError?.message, sessionError?.message)
           return NextResponse.json({ 
             error: 'Unauthorized', 
             details: 'User ID is required. Please log in and try again.' 
@@ -208,7 +209,7 @@ export async function POST(request: NextRequest) {
     }
     
     if (!targetUserId) {
-      console.error('No user ID available after all checks')
+      console.error('❌ [API] No user ID available after all checks')
       return NextResponse.json({ 
         error: 'Unauthorized', 
         details: 'User ID is required. Please log in and try again.' 
