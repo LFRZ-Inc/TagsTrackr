@@ -179,12 +179,15 @@ export async function POST(request: NextRequest) {
     // Use userId from request body if provided (from client), otherwise try server auth
     let targetUserId: string | null = userId || null
 
-    // Try to get user from server-side auth as fallback/verification
-    const supabase = createSupabaseClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // If userId is provided from client, use it directly (no server auth needed)
+    if (targetUserId) {
+      console.log('Using userId from client request:', targetUserId)
+    } else {
+      // Only try server auth if userId not provided
+      console.log('No userId in request, trying server auth...')
+      const supabase = createSupabaseClient()
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    // If we have userId from client, use it. Otherwise try server auth
-    if (!targetUserId) {
       if (user) {
         targetUserId = user.id
         console.log('Using authenticated user:', user.id, user.email)
@@ -194,14 +197,18 @@ export async function POST(request: NextRequest) {
         if (session?.user) {
           targetUserId = session.user.id
           console.log('Using session user:', session.user.id, session.user.email)
+        } else {
+          console.error('No user ID available. Auth error:', authError?.message, sessionError?.message)
+          return NextResponse.json({ 
+            error: 'Unauthorized', 
+            details: 'User ID is required. Please log in and try again.' 
+          }, { status: 401 })
         }
       }
-    } else {
-      console.log('Using userId from client request:', targetUserId)
     }
     
     if (!targetUserId) {
-      console.error('No user ID available. Auth error:', authError?.message)
+      console.error('No user ID available after all checks')
       return NextResponse.json({ 
         error: 'Unauthorized', 
         details: 'User ID is required. Please log in and try again.' 
