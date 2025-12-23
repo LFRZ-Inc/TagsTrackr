@@ -55,11 +55,26 @@ function createAdminClient() {
 export async function GET(request: NextRequest) {
   try {
     const supabase = createSupabaseClient()
+    
+    // Try to get user, but don't fail if it doesn't work
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    
+    // If getUser fails, try session
+    let targetUserId: string | null = user?.id || null
+    if (!targetUserId) {
+      const { data: { session } } = await supabase.auth.getSession()
+      targetUserId = session?.user?.id || null
     }
+
+    if (!targetUserId) {
+      console.error('GET circles: No user ID available')
+      return NextResponse.json({ 
+        error: 'Unauthorized',
+        details: 'Please log in to view circles'
+      }, { status: 401 })
+    }
+    
+    console.log('GET circles for user:', targetUserId)
 
     // Get all circles the user belongs to
     const { data: circles, error: circlesError } = await supabase
@@ -73,7 +88,7 @@ export async function GET(request: NextRequest) {
           users:user_id(email, full_name)
         )
       `)
-      .eq('circle_members.user_id', user.id)
+      .eq('circle_members.user_id', targetUserId)
       .eq('circle_members.is_active', true)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
@@ -393,9 +408,14 @@ export async function POST(request: NextRequest) {
       message: 'Circle created successfully!'
     })
   } catch (error) {
-    console.error('Create circle error:', error)
+    console.error('❌ [API] Create circle error:', error)
+    console.error('❌ [API] Error details:', error instanceof Error ? error.message : String(error))
+    console.error('❌ [API] Error stack:', error instanceof Error ? error.stack : 'No stack trace')
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error occurred'
+      },
       { status: 500 }
     )
   }
