@@ -56,25 +56,25 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createSupabaseClient()
     
-    // Try to get user, but don't fail if it doesn't work
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Try session first (more reliable in API routes)
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    let targetUserId: string | null = session?.user?.id || null
     
-    // If getUser fails, try session
-    let targetUserId: string | null = user?.id || null
+    // If session fails, try getUser
     if (!targetUserId) {
-      const { data: { session } } = await supabase.auth.getSession()
-      targetUserId = session?.user?.id || null
-    }
-
-    if (!targetUserId) {
-      console.error('GET circles: No user ID available')
-      return NextResponse.json({ 
-        error: 'Unauthorized',
-        details: 'Please log in to view circles'
-      }, { status: 401 })
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      targetUserId = user?.id || null
+      
+      if (!targetUserId) {
+        console.error('GET circles: No user ID available. Session error:', sessionError?.message, 'Auth error:', authError?.message)
+        return NextResponse.json({ 
+          error: 'Unauthorized',
+          details: 'Please log in to view circles'
+        }, { status: 401 })
+      }
     }
     
-    console.log('GET circles for user:', targetUserId)
+    console.log('✅ [API] GET circles for user:', targetUserId)
 
     // Get all circles the user belongs to
     const { data: circles, error: circlesError } = await supabase
@@ -231,7 +231,10 @@ export async function POST(request: NextRequest) {
       }, { status: 401 })
     }
 
-    console.log('Creating circle for user:', targetUserId)
+    console.log('✅ [API] Creating circle for user:', targetUserId)
+
+    // Create supabase client for fetching (needed later)
+    const supabase = createSupabaseClient()
 
     // Use admin client to bypass RLS (most reliable method)
     const adminClient = createAdminClient()
@@ -277,25 +280,41 @@ export async function POST(request: NextRequest) {
 
       console.log('✅ [API] Circle created, ID:', adminCircle.id)
       
-      // Add creator as admin member
-      const { error: memberError } = await adminClient
+      // Check if member was already added by trigger (database trigger should handle this)
+      // Wait a moment for trigger to complete
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      // Try to fetch the member that should have been created by trigger
+      const { data: existingMember } = await adminClient
         .from('circle_members')
-        .insert({
-          circle_id: adminCircle.id,
-          user_id: targetUserId,
-          role: 'admin',
-          location_sharing_enabled: true
-        })
+        .select('*')
+        .eq('circle_id', adminCircle.id)
+        .eq('user_id', targetUserId)
+        .single()
 
-      if (memberError) {
-        console.error('⚠️ [API] Error adding member (circle still created):', memberError)
-        // Don't fail - circle was created, member can be added later
+      if (!existingMember) {
+        // Only add member if trigger didn't create it
+        console.log('⚠️ [API] Member not found, adding manually...')
+        const { error: memberError } = await adminClient
+          .from('circle_members')
+          .insert({
+            circle_id: adminCircle.id,
+            user_id: targetUserId,
+            role: 'admin',
+            location_sharing_enabled: true
+          })
+
+        if (memberError) {
+          console.error('⚠️ [API] Error adding member (circle still created):', memberError)
+          // Don't fail - circle was created, member might be added by trigger later
+        } else {
+          console.log('✅ [API] Creator added as admin member manually')
+        }
       } else {
-        console.log('✅ [API] Creator added as admin member')
+        console.log('✅ [API] Member already exists (created by trigger)')
       }
 
       // Try to fetch with regular client (for RLS) to get full circle data
-      const supabase = createSupabaseClient()
       const { data: circle } = await supabase
         .from('family_circles')
         .select('*')
@@ -319,13 +338,20 @@ export async function POST(request: NextRequest) {
           message: 'Circle created successfully!'
         })
       } else {
-        // If RLS blocks fetch, return what we have from admin client
+        // If RLS blocks fetch, use admin client to get member and return
+        const { data: adminMember } = await adminClient
+          .from('circle_members')
+          .select('*')
+          .eq('circle_id', adminCircle.id)
+          .eq('user_id', targetUserId)
+          .single()
+
         console.log('⚠️ [API] RLS blocked fetch, returning admin circle data')
         return NextResponse.json({
           success: true,
           circle: {
             ...adminCircle,
-            members: []
+            members: adminMember ? [adminMember] : []
           },
           message: 'Circle created successfully!'
         })
