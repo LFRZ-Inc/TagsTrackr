@@ -194,59 +194,6 @@ export async function GET(request: NextRequest) {
         }
       })
     )
-          .eq('is_active', true)
-
-        if (membersError) {
-          console.error('Error fetching members:', membersError)
-          return { ...circle, members: [] }
-        }
-
-        // Get latest location for each member
-        const membersWithLocations = await Promise.all(
-          (members || []).map(async (member: any) => {
-            if (!member.location_sharing_enabled || !member.users) {
-              return { ...member, current_location: null }
-            }
-
-            // Get user's devices
-            const { data: devices } = await supabase
-              .from('personal_devices')
-              .select('id')
-              .eq('user_id', member.users.id)
-              .eq('location_sharing_active', true)
-              .limit(1)
-
-            if (!devices || devices.length === 0) {
-              return { ...member, current_location: null }
-            }
-
-            // Get latest location ping
-            const { data: location } = await supabase
-              .from('location_pings')
-              .select('latitude, longitude, accuracy, recorded_at')
-              .eq('device_id', devices[0].id)
-              .order('recorded_at', { ascending: false })
-              .limit(1)
-              .single()
-
-            return {
-              ...member,
-              current_location: location ? {
-                latitude: parseFloat(location.latitude),
-                longitude: parseFloat(location.longitude),
-                accuracy: location.accuracy ? parseFloat(location.accuracy) : undefined,
-                recorded_at: location.recorded_at
-              } : null
-            }
-          })
-        )
-
-        return {
-          ...circle,
-          members: membersWithLocations
-        }
-      })
-    )
 
     return NextResponse.json({
       circles: circlesWithMembers
