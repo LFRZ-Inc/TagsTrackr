@@ -54,7 +54,8 @@ function createAdminClient() {
 // GET - Get all circles for the current user
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createSupabaseClient()
+    // Create supabase client with request to extract auth token
+    const supabase = createSupabaseClient(request)
     
     // Get the authorization header from the request
     const authHeader = request.headers.get('authorization')
