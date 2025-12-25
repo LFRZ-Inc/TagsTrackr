@@ -117,8 +117,18 @@ export async function GET(request: NextRequest) {
     console.log('✅ [API] GET circles for user:', targetUserId)
 
     // Get all circles the user belongs to
-    // First, get circle IDs where user is a member
-    const { data: memberCircles, error: memberError } = await supabase
+    // Use admin client to bypass RLS for the initial query (avoids infinite recursion)
+    const adminClient = createAdminClient()
+    if (!adminClient) {
+      console.error('❌ [API] Admin client not available')
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      )
+    }
+
+    // First, get circle IDs where user is a member (using admin client to avoid RLS recursion)
+    const { data: memberCircles, error: memberError } = await adminClient
       .from('circle_members')
       .select('circle_id')
       .eq('user_id', targetUserId)
