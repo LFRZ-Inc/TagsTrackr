@@ -357,7 +357,7 @@ export async function PUT(request: NextRequest) {
         .from('circle_members')
         .insert({
           circle_id: invitation.circle_id,
-          user_id: user.id,
+          user_id: targetUserId,
           role: 'member',
           location_sharing_enabled: true
         })
