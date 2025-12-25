@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Users, Plus, Settings, Trash2, UserPlus, Map, X, Check, Copy } from 'lucide-react'
+import { Users, Plus, Settings, Trash2, UserPlus, Map, X, Check, Copy, Key } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import UnifiedFamilyMap from './UnifiedFamilyMap'
 
 interface Circle {
