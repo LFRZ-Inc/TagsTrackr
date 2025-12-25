@@ -330,7 +330,7 @@ export async function PUT(request: NextRequest) {
       // Get user email from session if needed
       const { data: { user: sessionUser } } = await supabase.auth.getUser()
       const userEmail = sessionUser?.email
-      if (invitation.invitee_email !== userEmail && invitation.invitee_user_id !== user.id) {
+      if (invitation.invitee_email !== userEmail && invitation.invitee_user_id !== targetUserId) {
         return NextResponse.json(
           { error: 'This invitation is not for you' },
           { status: 403 }
@@ -376,7 +376,7 @@ export async function PUT(request: NextRequest) {
         .update({
           status: 'accepted',
           accepted_at: new Date().toISOString(),
-          invitee_user_id: user.id
+          invitee_user_id: targetUserId
         })
         .eq('id', invitationId)
 
