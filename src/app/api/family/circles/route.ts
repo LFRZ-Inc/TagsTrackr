@@ -522,11 +522,7 @@ export async function DELETE(request: NextRequest) {
         // Set session on main client for RLS
         await supabase.auth.setSession({
           access_token: token,
-          refresh_token: '',
-          expires_in: 3600,
-          expires_at: Math.floor(Date.now() / 1000) + 3600,
-          token_type: 'bearer',
-          user: user as any
+          refresh_token: ''
         }).catch(() => {})
       }
     }

@@ -388,7 +388,10 @@ export default function Dashboard() {
           if (allMembers && allMembers.length > 0) {
             // Get all user IDs from circle members
             const memberUserIds = allMembers
-              .map(m => m.users?.id)
+              .map((m: any) => {
+                const users = Array.isArray(m.users) ? m.users[0] : m.users
+                return users?.id
+              })
               .filter(Boolean) as string[]
 
             if (memberUserIds.length > 0) {
@@ -449,8 +452,12 @@ export default function Dashboard() {
                       }
 
                       // Find which member owns this device
-                      const member = allMembers.find(m => m.users?.id === device.user_id)
-                      const memberName = member?.users?.full_name || member?.users?.email || 'Unknown'
+                      const member = allMembers.find((m: any) => {
+                        const users = Array.isArray(m.users) ? m.users[0] : m.users
+                        return users?.id === device.user_id
+                      })
+                      const memberUsers = member && (Array.isArray(member.users) ? member.users[0] : member.users)
+                      const memberName = memberUsers?.full_name || memberUsers?.email || 'Unknown'
 
                       return {
                         ...device,
