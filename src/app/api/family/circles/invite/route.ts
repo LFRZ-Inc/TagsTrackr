@@ -290,11 +290,56 @@ export async function GET(request: NextRequest) {
 // PUT - Accept or decline invitation
 export async function PUT(request: NextRequest) {
   try {
+    // Get the authorization header from the request
+    const authHeader = request.headers.get('authorization')
+    
+    // Create supabase client
     const supabase = createSupabaseClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    
+    let targetUserId: string | null = null
+    
+    // If we have an auth token, use it directly
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '')
+      const { createClient } = require('@supabase/supabase-js')
+      const tempClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+      
+      const { data: { user }, error: authError } = await tempClient.auth.getUser(token)
+      
+      if (!authError && user) {
+        targetUserId = user.id
+        console.log('✅ [API] PUT invite - User from token:', targetUserId)
+        
+        // Set session on main client for RLS
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: ''
+        }).catch(() => {
+          // Ignore session set errors
+        })
+      }
+    }
+    
+    // If token didn't work, try getUser (works with cookies)
+    if (!targetUserId) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      targetUserId = user?.id || null
+      
+      if (!targetUserId) {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        targetUserId = session?.user?.id || null
+        
+        if (!targetUserId) {
+          console.error('❌ [API] PUT invite: No user ID available. Auth error:', authError?.message, 'Session error:', sessionError?.message)
+          return NextResponse.json({ 
+            error: 'Unauthorized', 
+            details: 'Please log in to accept invitations' 
+          }, { status: 401 })
+        }
+      }
     }
 
     const body = await request.json()
@@ -327,7 +372,7 @@ export async function PUT(request: NextRequest) {
     
     if (!isCodeBasedInvite) {
       // For email-based invites, verify it's for the current user
-      // Get user email from session if needed
+      // Get user email from session
       const { data: { user: sessionUser } } = await supabase.auth.getUser()
       const userEmail = sessionUser?.email
       if (invitation.invitee_email !== userEmail && invitation.invitee_user_id !== targetUserId) {
