@@ -163,16 +163,37 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // For each circle, get all members with their latest locations
+    // Transform the data to include user info for each member
     const circlesWithMembers = await Promise.all(
       (circles || []).map(async (circle: any) => {
-        const { data: members, error: membersError } = await supabase
-          .from('circle_members')
-          .select(`
-            *,
-            users:user_id(id, email, full_name)
-          `)
-          .eq('circle_id', circle.id)
+        // Get user info for each member from public.users table
+        const memberUserIds = (circle.circle_members || [])
+          .filter((m: any) => m.is_active)
+          .map((m: any) => m.user_id)
+        
+        let membersWithUsers = circle.circle_members || []
+        
+        if (memberUserIds.length > 0) {
+          const { data: users } = await supabase
+            .from('users')
+            .select('id, email, full_name')
+            .in('id', memberUserIds)
+
+          membersWithUsers = (circle.circle_members || []).map((member: any) => {
+            const user = users?.find((u: any) => u.id === member.user_id)
+            return {
+              ...member,
+              user: user ? { email: user.email, full_name: user.full_name } : null
+            }
+          })
+        }
+
+        return {
+          ...circle,
+          members: membersWithUsers.filter((m: any) => m.is_active)
+        }
+      })
+    )
           .eq('is_active', true)
 
         if (membersError) {
