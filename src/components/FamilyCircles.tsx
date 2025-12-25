@@ -242,9 +242,16 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
       }
 
       // Accept the invitation
+      // Get the session token to include in the request
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+
       const acceptResponse = await fetch('/api/family/circles/invite', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` }) // Add token if available
+        },
         credentials: 'include',
         body: JSON.stringify({
           invitationId: invitation.id,

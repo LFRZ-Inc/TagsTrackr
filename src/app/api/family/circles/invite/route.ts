@@ -321,13 +321,21 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Verify this invitation is for the current user
-    const userEmail = user.email
-    if (invitation.invitee_email !== userEmail && invitation.invitee_user_id !== user.id) {
-      return NextResponse.json(
-        { error: 'This invitation is not for you' },
-        { status: 403 }
-      )
+    // Verify this invitation is for the current user (skip check for code-based invites)
+    // Code-based invites have empty invitee_email and null invitee_user_id
+    const isCodeBasedInvite = !invitation.invitee_email || invitation.invitee_email.trim() === ''
+    
+    if (!isCodeBasedInvite) {
+      // For email-based invites, verify it's for the current user
+      // Get user email from session if needed
+      const { data: { user: sessionUser } } = await supabase.auth.getUser()
+      const userEmail = sessionUser?.email
+      if (invitation.invitee_email !== userEmail && invitation.invitee_user_id !== user.id) {
+        return NextResponse.json(
+          { error: 'This invitation is not for you' },
+          { status: 403 }
+        )
+      }
     }
 
     // Check if invitation is expired
