@@ -444,54 +444,73 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Invite to Circle</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Generate Invite Code</h3>
               <button
-                onClick={() => setShowInviteModal(false)}
+                onClick={() => {
+                  setShowInviteModal(false)
+                  setInviteCode(null)
+                }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address *
-                </label>
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="friend@example.com"
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Message (optional)
-                </label>
-                <textarea
-                  value={inviteMessage}
-                  onChange={(e) => setInviteMessage(e.target.value)}
-                  placeholder="Add a personal message..."
-                  rows={3}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="flex space-x-3 pt-4">
-                <button
-                  onClick={sendInvite}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
-                >
-                  <Mail className="h-4 w-4 inline mr-2" />
-                  Send Invitation
-                </button>
-                <button
-                  onClick={() => setShowInviteModal(false)}
-                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
+              {inviteCode ? (
+                <>
+                  <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 text-center">
+                    <p className="text-sm text-gray-600 mb-2">Share this code with people you want to invite:</p>
+                    <div className="bg-white border-2 border-blue-500 rounded-lg p-4 mb-4">
+                      <p className="text-3xl font-bold text-blue-600 tracking-wider font-mono">{inviteCode}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(inviteCode)
+                        alert('Code copied to clipboard!')
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-700 underline"
+                    >
+                      Click to copy code
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 text-center">
+                    This code expires in 30 days. Anyone with this code can join the circle.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setShowInviteModal(false)
+                      setInviteCode(null)
+                    }}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+                  >
+                    Done
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-600">
+                    Generate a unique 6-character code that people can use to join this circle. Share the code with anyone you want to invite.
+                  </p>
+                  <div className="flex space-x-3 pt-4">
+                    <button
+                      onClick={generateInviteCode}
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center"
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Generate Code
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowInviteModal(false)
+                        setInviteCode(null)
+                      }}
+                      className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
