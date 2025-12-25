@@ -11,7 +11,17 @@ interface Circle {
   description: string | null
   color: string
   created_at: string
-  members: any[]
+  created_by?: string
+  members: Array<{
+    user_id: string
+    role: string
+    location_sharing_enabled: boolean
+    is_active: boolean
+    user?: {
+      email: string
+      full_name: string | null
+    }
+  }>
 }
 
 interface FamilyCirclesProps {
@@ -22,6 +32,7 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
   const [circles, setCircles] = useState<Circle[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCircle, setSelectedCircle] = useState<string | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
@@ -31,6 +42,14 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
   const [newCircleColor, setNewCircleColor] = useState('#3B82F6')
 
   useEffect(() => {
+    // Get current user ID
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setCurrentUserId(user.id)
+      }
+    }
+    getCurrentUser()
     fetchCircles()
   }, [])
 
@@ -284,18 +303,27 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
                       {circle.members?.length || 0} members
                     </div>
                   </div>
-                  {selectedCircle === circle.id && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        deleteCircle(circle.id)
-                      }}
-                      className="text-red-600 hover:text-red-800 p-1"
-                      title="Delete circle"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
+                  {selectedCircle === circle.id && (() => {
+                    // Check if user can delete (creator or admin)
+                    const isCreator = circle.created_by === currentUserId
+                    const isAdmin = circle.members?.some(
+                      (m) => m.user_id === currentUserId && m.role === 'admin' && m.is_active
+                    )
+                    const canDelete = isCreator || isAdmin
+                    
+                    return canDelete ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          deleteCircle(circle.id)
+                        }}
+                        className="text-red-600 hover:text-red-800 p-1"
+                        title="Delete circle"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    ) : null
+                  })()}
                 </div>
               </div>
             ))}
