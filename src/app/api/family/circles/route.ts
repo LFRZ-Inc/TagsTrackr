@@ -142,7 +142,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ circles: [] })
     }
 
-    const circleIds = memberCircles.map(m => m.circle_id)
+    const circleIds = memberCircles.map((m: { circle_id: string }) => m.circle_id)
 
     // Now fetch the circles with their members using admin client (avoids RLS recursion)
     const { data: circles, error: circlesError } = await adminClient
