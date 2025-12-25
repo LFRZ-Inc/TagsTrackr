@@ -499,13 +499,54 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE - Delete a circle
+// DELETE - Delete a circle (only creator or admin can delete)
 export async function DELETE(request: NextRequest) {
   try {
+    // Get the authorization header from the request
+    const authHeader = request.headers.get('authorization')
+    
+    // Create supabase client
     const supabase = createSupabaseClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
+    let targetUserId: string | null = null
+    
+    // If we have an auth token, use it directly
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '')
+      const { createClient } = require('@supabase/supabase-js')
+      const tempClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+      
+      const { data: { user }, error: authError } = await tempClient.auth.getUser(token)
+      
+      if (!authError && user) {
+        targetUserId = user.id
+        // Set session on main client for RLS
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: '',
+          expires_in: 3600,
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          token_type: 'bearer',
+          user: user as any
+        }).catch(() => {})
+      }
+    }
+    
+    // If token didn't work, try getUser (works with cookies)
+    if (!targetUserId) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      targetUserId = user?.id || null
+      
+      if (!targetUserId) {
+        const { data: { session } } = await supabase.auth.getSession()
+        targetUserId = session?.user?.id || null
+      }
+    }
 
-    if (authError || !user) {
+    if (!targetUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -519,22 +560,52 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Check if user created this circle
-    const { data: circle } = await supabase
-      .from('family_circles')
-      .select('created_by')
-      .eq('id', circleId)
-      .single()
-
-    if (!circle || circle.created_by !== user.id) {
+    // Use admin client to check circle and membership (avoids RLS recursion)
+    const adminClient = createAdminClient()
+    if (!adminClient) {
       return NextResponse.json(
-        { error: 'You can only delete circles you created' },
-        { status: 403 }
+        { error: 'Server configuration error' },
+        { status: 500 }
       )
     }
 
-    // Soft delete by setting is_active to false
-    const { error: deleteError } = await supabase
+    // Check if user is the creator or an admin
+    const { data: circle, error: circleError } = await adminClient
+      .from('family_circles')
+      .select('created_by')
+      .eq('id', circleId)
+      .eq('is_active', true)
+      .single()
+
+    if (circleError || !circle) {
+      return NextResponse.json({ error: 'Circle not found' }, { status: 404 })
+    }
+
+    // Check if user is creator
+    const isCreator = circle.created_by === targetUserId
+
+    // Check if user is admin member
+    let isAdmin = false
+    if (!isCreator) {
+      const { data: membership } = await adminClient
+        .from('circle_members')
+        .select('role')
+        .eq('circle_id', circleId)
+        .eq('user_id', targetUserId)
+        .eq('is_active', true)
+        .single()
+
+      isAdmin = membership?.role === 'admin'
+    }
+
+    if (!isCreator && !isAdmin) {
+      return NextResponse.json({ 
+        error: 'Only the circle creator or admins can delete the circle' 
+      }, { status: 403 })
+    }
+
+    // Soft delete the circle using admin client
+    const { error: deleteError } = await adminClient
       .from('family_circles')
       .update({ is_active: false })
       .eq('id', circleId)
@@ -545,6 +616,17 @@ export async function DELETE(request: NextRequest) {
         { error: 'Failed to delete circle' },
         { status: 500 }
       )
+    }
+
+    // Also soft delete all members
+    const { error: membersError } = await adminClient
+      .from('circle_members')
+      .update({ is_active: false })
+      .eq('circle_id', circleId)
+
+    if (membersError) {
+      console.error('Error deleting circle members:', membersError)
+      // Don't fail the request, members will be cleaned up later
     }
 
     return NextResponse.json({

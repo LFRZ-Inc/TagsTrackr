@@ -173,8 +173,21 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
     }
 
     try {
+      // Get the session token to include in the request
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json'
+      }
+      
+      // Add authorization header if we have a session
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+
       const response = await fetch(`/api/family/circles?circleId=${circleId}`, {
         method: 'DELETE',
+        headers,
         credentials: 'include'
       })
 
