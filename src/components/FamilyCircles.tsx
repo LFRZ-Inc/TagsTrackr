@@ -184,6 +184,81 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
     }
   }
 
+  const joinByCode = async () => {
+    if (!joinCode.trim()) {
+      alert('Please enter a code')
+      return
+    }
+
+    try {
+      // First, get the invitation by code
+      const response = await fetch(`/api/family/circles/invite/${joinCode.trim().toUpperCase()}`)
+      
+      if (!response.ok) {
+        const error = await response.json()
+        alert(error.error || 'Invalid or expired code')
+        return
+      }
+
+      const data = await response.json()
+      const invitation = data.invitation
+
+      if (!invitation) {
+        alert('Invitation not found')
+        return
+      }
+
+      // Check if user is logged in
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert('Please log in to join the circle')
+        router.push(`/login?redirect=/invite/${joinCode.trim().toUpperCase()}`)
+        return
+      }
+
+      // Check if already a member
+      const { data: existingMember } = await supabase
+        .from('circle_members')
+        .select('id')
+        .eq('circle_id', invitation.circle_id)
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .single()
+
+      if (existingMember) {
+        alert('You are already a member of this circle')
+        setShowJoinModal(false)
+        setJoinCode('')
+        await fetchCircles()
+        return
+      }
+
+      // Accept the invitation
+      const acceptResponse = await fetch('/api/family/circles/invite', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          invitationId: invitation.id,
+          action: 'accept'
+        })
+      })
+
+      if (acceptResponse.ok) {
+        alert('Successfully joined the circle!')
+        setShowJoinModal(false)
+        setJoinCode('')
+        await fetchCircles()
+      } else {
+        const error = await acceptResponse.json()
+        alert(error.error || 'Failed to join circle')
+      }
+    } catch (error) {
+      console.error('Error joining by code:', error)
+      alert('Failed to join circle')
+    }
+  }
+
   const deleteCircle = async (circleId: string) => {
     if (!confirm('Are you sure you want to delete this circle? This action cannot be undone.')) {
       return
