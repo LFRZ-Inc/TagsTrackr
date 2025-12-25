@@ -35,8 +35,7 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteMessage, setInviteMessage] = useState('')
+  const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [newCircleName, setNewCircleName] = useState('')
   const [newCircleDescription, setNewCircleDescription] = useState('')
   const [newCircleColor, setNewCircleColor] = useState('#3B82F6')
@@ -145,9 +144,9 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
     }
   }
 
-  const sendInvite = async () => {
-    if (!inviteEmail.trim() || !selectedCircle) {
-      alert('Please enter an email address')
+  const generateInviteCode = async () => {
+    if (!selectedCircle) {
+      alert('Please select a circle')
       return
     }
 
@@ -157,32 +156,28 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          circleId: selectedCircle,
-          inviteeEmail: inviteEmail.trim(),
-          message: inviteMessage.trim() || null
+          circleId: selectedCircle
         })
       })
 
       if (response.ok) {
         const data = await response.json()
-        const inviteLink = data.invitation?.invite_link
-        if (inviteLink) {
-          // Copy link to clipboard
-          navigator.clipboard.writeText(inviteLink)
-          alert(`Invitation sent! Invitation link copied to clipboard:\n\n${inviteLink}\n\nShare this link with ${inviteEmail}`)
+        const code = data.invitation?.code || data.invitation?.token
+        if (code) {
+          setInviteCode(code)
+          // Copy code to clipboard
+          navigator.clipboard.writeText(code)
+          alert(`Invitation code generated!\n\nCode: ${code}\n\nCode copied to clipboard. Share this code with people you want to invite.`)
         } else {
-          alert(data.message || 'Invitation sent!')
+          alert(data.message || 'Invitation code generated!')
         }
-        setShowInviteModal(false)
-        setInviteEmail('')
-        setInviteMessage('')
       } else {
         const error = await response.json()
-        alert(error.error || 'Failed to send invitation')
+        alert(error.error || 'Failed to generate invitation code')
       }
     } catch (error) {
-      console.error('Error sending invite:', error)
-      alert('Failed to send invitation')
+      console.error('Error generating invite code:', error)
+      alert('Failed to generate invitation code')
     }
   }
 

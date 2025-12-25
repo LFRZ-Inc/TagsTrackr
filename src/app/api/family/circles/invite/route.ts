@@ -45,87 +45,117 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { circleId, inviteeEmail, message } = body
+    const { circleId } = body
 
-    if (!circleId || !inviteeEmail) {
+    if (!circleId) {
       return NextResponse.json(
-        { error: 'Circle ID and invitee email are required' },
+        { error: 'Circle ID is required' },
         { status: 400 }
       )
     }
 
-    // Check if user is admin of this circle
-    const { data: membership } = await supabase
-      .from('circle_members')
-      .select('role')
-      .eq('circle_id', circleId)
-      .eq('user_id', user.id)
+    // Use admin client to check membership (avoids RLS recursion)
+    const { createClient } = require('@supabase/supabase-js')
+    const adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
+
+    // Check if user is admin or creator of this circle
+    const { data: circle } = await adminClient
+      .from('family_circles')
+      .select('created_by')
+      .eq('id', circleId)
       .eq('is_active', true)
       .single()
 
-    if (!membership || membership.role !== 'admin') {
+    if (!circle) {
       return NextResponse.json(
-        { error: 'You must be an admin to invite members' },
+        { error: 'Circle not found' },
+        { status: 404 }
+      )
+    }
+
+    const isCreator = circle.created_by === user.id
+
+    let isAdmin = false
+    if (!isCreator) {
+      const { data: membership } = await adminClient
+        .from('circle_members')
+        .select('role')
+        .eq('circle_id', circleId)
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .single()
+
+      isAdmin = membership?.role === 'admin'
+    }
+
+    if (!isCreator && !isAdmin) {
+      return NextResponse.json(
+        { error: 'You must be the creator or an admin to generate invite codes' },
         { status: 403 }
       )
     }
 
-    // Check if user is already a member
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', inviteeEmail)
-      .single()
+    // Generate a unique 6-character alphanumeric code
+    const generateCode = () => {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // Removed confusing chars like 0, O, I, 1
+      let code = ''
+      for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length))
+      }
+      return code
+    }
 
-    if (existingUser) {
-      const { data: existingMember } = await supabase
-        .from('circle_members')
+    // Generate unique code (check for collisions)
+    let code = generateCode()
+    let attempts = 0
+    let codeExists = true
+
+    while (codeExists && attempts < 10) {
+      const { data: existing } = await adminClient
+        .from('circle_invitations')
         .select('id')
-        .eq('circle_id', circleId)
-        .eq('user_id', existingUser.id)
-        .eq('is_active', true)
+        .eq('token', code)
+        .eq('status', 'pending')
         .single()
 
-      if (existingMember) {
-        return NextResponse.json(
-          { error: 'User is already a member of this circle' },
-          { status: 409 }
-        )
+      if (!existing) {
+        codeExists = false
+      } else {
+        code = generateCode()
+        attempts++
       }
     }
 
-    // Check for existing pending invitation
-    const { data: existingInvite } = await supabase
-      .from('circle_invitations')
-      .select('id')
-      .eq('circle_id', circleId)
-      .eq('invitee_email', inviteeEmail)
-      .eq('status', 'pending')
-      .single()
-
-    if (existingInvite) {
+    if (codeExists) {
       return NextResponse.json(
-        { error: 'An invitation is already pending for this email' },
-        { status: 409 }
+        { error: 'Failed to generate unique code. Please try again.' },
+        { status: 500 }
       )
     }
 
-    // Generate unique token
-    const token = uuidv4()
     const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 7) // Expires in 7 days
+    expiresAt.setDate(expiresAt.getDate() + 30) // Expires in 30 days
 
-    // Create invitation
-    const { data: invitation, error: inviteError } = await supabase
+    // Create invitation with code (no email required)
+    const { data: invitation, error: inviteError } = await adminClient
       .from('circle_invitations')
       .insert({
         circle_id: circleId,
         invited_by: user.id,
-        invitee_email: inviteeEmail,
-        invitee_user_id: existingUser?.id || null,
-        token,
+        invitee_email: '', // Empty for code-based invites
+        invitee_user_id: null,
+        token: code, // Use code as token
         expires_at: expiresAt.toISOString(),
-        message: message?.trim() || null
+        message: null
       })
       .select()
       .single()
@@ -133,22 +163,18 @@ export async function POST(request: NextRequest) {
     if (inviteError) {
       console.error('Error creating invitation:', inviteError)
       return NextResponse.json(
-        { error: 'Failed to create invitation' },
+        { error: 'Failed to create invitation code' },
         { status: 500 }
       )
     }
-
-    // TODO: Send email notification here
-    // For now, return the invitation with a link
-    const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/invite/${token}`
 
     return NextResponse.json({
       success: true,
       invitation: {
         ...invitation,
-        invite_link: inviteLink
+        code: code // Return the code
       },
-      message: 'Invitation created successfully!'
+      message: 'Invitation code generated successfully!'
     })
   } catch (error) {
     console.error('Create invitation error:', error)
