@@ -530,6 +530,63 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
           </div>
         </div>
       )}
+
+      {/* Join by Code Modal */}
+      {showJoinModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Join Circle by Code</h3>
+              <button
+                onClick={() => {
+                  setShowJoinModal(false)
+                  setJoinCode('')
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Enter Invite Code
+                </label>
+                <input
+                  type="text"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+                  placeholder="ABC123"
+                  maxLength={6}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 text-center text-2xl font-mono tracking-wider uppercase"
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Enter the 6-character code shared with you
+                </p>
+              </div>
+              <div className="flex space-x-3 pt-4">
+                <button
+                  onClick={joinByCode}
+                  disabled={!joinCode.trim() || joinCode.length !== 6}
+                  className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  <Key className="h-4 w-4 mr-2" />
+                  Join Circle
+                </button>
+                <button
+                  onClick={() => {
+                    setShowJoinModal(false)
+                    setJoinCode('')
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
