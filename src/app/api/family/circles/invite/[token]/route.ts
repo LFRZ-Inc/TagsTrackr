@@ -62,27 +62,80 @@ export async function GET(
       }
     )
 
-    // Get invitation by token (code)
-    const { data: invitation, error: inviteError } = await adminClient
+    // Get invitation by token (code) - try both uppercase and original case
+    const normalizedToken = token.toUpperCase().trim()
+    
+    console.log('🔍 [API] Looking for invitation with token:', normalizedToken)
+    
+    // First try with uppercase (as codes are stored)
+    let { data: invitation, error: inviteError } = await adminClient
       .from('circle_invitations')
       .select(`
         *,
         circle:circle_id(id, name, description, color)
       `)
-      .eq('token', token.toUpperCase())
+      .eq('token', normalizedToken)
       .single()
 
+    // If not found, try with original case (in case stored differently)
     if (inviteError || !invitation) {
+      console.log('⚠️ [API] Not found with uppercase, trying original case:', token.trim())
+      const result = await adminClient
+        .from('circle_invitations')
+        .select(`
+          *,
+          circle:circle_id(id, name, description, color)
+        `)
+        .eq('token', token.trim())
+        .single()
+      
+      invitation = result.data
+      inviteError = result.error
+    }
+
+    if (inviteError || !invitation) {
+      console.error('❌ [API] Invitation not found. Error:', inviteError)
+      // Also check if there are any pending invitations to help debug
+      const { data: allPending } = await adminClient
+        .from('circle_invitations')
+        .select('token, status, expires_at')
+        .eq('status', 'pending')
+        .limit(5)
+      console.log('📋 [API] Sample pending invitations:', allPending?.map((inv: any) => ({ token: inv.token, expires: inv.expires_at })))
+      
       return NextResponse.json(
-        { error: 'Invitation not found' },
+        { error: 'Invitation not found', details: 'The code may be incorrect or the invitation may have expired' },
         { status: 404 }
       )
+    }
+    
+    console.log('✅ [API] Found invitation:', invitation.id, 'Status:', invitation.status)
+
+    // Check if already accepted or declined
+    if (invitation.status === 'accepted') {
+      return NextResponse.json({
+        invitation: {
+          ...invitation,
+          status: 'accepted'
+        },
+        message: 'This invitation has already been accepted'
+      })
+    }
+    
+    if (invitation.status === 'declined') {
+      return NextResponse.json({
+        invitation: {
+          ...invitation,
+          status: 'declined'
+        },
+        message: 'This invitation has been declined'
+      })
     }
 
     // Check if expired
     if (invitation.expires_at && new Date(invitation.expires_at) < new Date()) {
-      // Update status to expired
-      await supabase
+      // Update status to expired using admin client
+      await adminClient
         .from('circle_invitations')
         .update({ status: 'expired' })
         .eq('id', invitation.id)
@@ -91,7 +144,8 @@ export async function GET(
         invitation: {
           ...invitation,
           status: 'expired'
-        }
+        },
+        message: 'This invitation has expired'
       })
     }
 
