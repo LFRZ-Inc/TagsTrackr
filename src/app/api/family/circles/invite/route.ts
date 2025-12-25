@@ -193,6 +193,7 @@ export async function POST(request: NextRequest) {
     expiresAt.setDate(expiresAt.getDate() + 30) // Expires in 30 days
 
     // Create invitation with code (no email required)
+    // Store code in uppercase for consistency
     const { data: invitation, error: inviteError } = await adminClient
       .from('circle_invitations')
       .insert({
@@ -200,7 +201,7 @@ export async function POST(request: NextRequest) {
         invited_by: user.id,
         invitee_email: '', // Empty for code-based invites
         invitee_user_id: null,
-        token: code, // Use code as token
+        token: code.toUpperCase(), // Store code in uppercase for consistency
         expires_at: expiresAt.toISOString(),
         message: null
       })
