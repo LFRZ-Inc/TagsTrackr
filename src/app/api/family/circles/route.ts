@@ -54,30 +54,63 @@ function createAdminClient() {
 // GET - Get all circles for the current user
 export async function GET(request: NextRequest) {
   try {
-    // Create supabase client with request to extract auth token
-    const supabase = createSupabaseClient(request)
-    
     // Get the authorization header from the request
     const authHeader = request.headers.get('authorization')
     const cookieHeader = request.headers.get('cookie')
     
     console.log('🔍 [API] GET circles - Auth header present:', !!authHeader, 'Cookie present:', !!cookieHeader)
     
-    // Try getUser first (works with both cookies and tokens)
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    let targetUserId: string | null = user?.id || null
+    // Create supabase client
+    const supabase = createSupabaseClient()
     
-    // If getUser fails, try session
+    let targetUserId: string | null = null
+    
+    // If we have an auth token, use it directly
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '')
+      const { createClient } = require('@supabase/supabase-js')
+      const tempClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+      
+      const { data: { user }, error: authError } = await tempClient.auth.getUser(token)
+      
+      if (!authError && user) {
+        targetUserId = user.id
+        console.log('✅ [API] GET circles - User from token:', targetUserId)
+        
+        // Set session on main client for RLS
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: '',
+          expires_in: 3600,
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          token_type: 'bearer',
+          user: user as any
+        }).catch(() => {
+          // Ignore session set errors
+        })
+      }
+    }
+    
+    // If token didn't work, try getUser (works with cookies)
     if (!targetUserId) {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      targetUserId = session?.user?.id || null
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      targetUserId = user?.id || null
       
       if (!targetUserId) {
-        console.error('❌ [API] GET circles: No user ID available. Auth error:', authError?.message, 'Session error:', sessionError?.message)
-        return NextResponse.json({ 
-          error: 'Unauthorized',
-          details: 'Please log in to view circles'
-        }, { status: 401 })
+        // Try session as last resort
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        targetUserId = session?.user?.id || null
+        
+        if (!targetUserId) {
+          console.error('❌ [API] GET circles: No user ID available. Auth error:', authError?.message, 'Session error:', sessionError?.message)
+          return NextResponse.json({ 
+            error: 'Unauthorized',
+            details: 'Please log in to view circles'
+          }, { status: 401 })
+        }
       }
     }
     
