@@ -148,8 +148,8 @@ export async function GET(request: NextRequest) {
 
     const circleIds = memberCircles.map(m => m.circle_id)
 
-    // Now fetch the circles with their members
-    const { data: circles, error: circlesError } = await supabase
+    // Now fetch the circles with their members using admin client (avoids RLS recursion)
+    const { data: circles, error: circlesError } = await adminClient
       .from('family_circles')
       .select(`
         *,
@@ -174,6 +174,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform the data to include user info for each member
+    // Use admin client for user lookup too (avoids any RLS issues)
     const circlesWithMembers = await Promise.all(
       (circles || []).map(async (circle: any) => {
         // Get user info for each member from public.users table
@@ -184,7 +185,8 @@ export async function GET(request: NextRequest) {
         let membersWithUsers = circle.circle_members || []
         
         if (memberUserIds.length > 0) {
-          const { data: users } = await supabase
+          // Use admin client to avoid RLS issues
+          const { data: users } = await adminClient
             .from('users')
             .select('id, email, full_name')
             .in('id', memberUserIds)
