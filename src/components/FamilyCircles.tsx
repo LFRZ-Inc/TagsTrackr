@@ -244,13 +244,25 @@ export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
           <h2 className="text-2xl font-bold text-gray-900">Family Circles</h2>
           <p className="text-sm text-gray-600">Share locations with your family</p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-        >
-          <Plus className="h-5 w-5 mr-2" />
-          Create Circle
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={() => {
+              setJoinCode('')
+              setShowJoinModal(true)
+            }}
+            className="inline-flex items-center px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+          >
+            <Key className="h-5 w-5 mr-2" />
+            Join by Code
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            <Plus className="h-5 w-5 mr-2" />
+            Create Circle
+          </button>
+        </div>
       </div>
 
       {/* Circles List */}
