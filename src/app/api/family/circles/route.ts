@@ -117,19 +117,41 @@ export async function GET(request: NextRequest) {
     console.log('✅ [API] GET circles for user:', targetUserId)
 
     // Get all circles the user belongs to
+    // First, get circle IDs where user is a member
+    const { data: memberCircles, error: memberError } = await supabase
+      .from('circle_members')
+      .select('circle_id')
+      .eq('user_id', targetUserId)
+      .eq('is_active', true)
+
+    if (memberError) {
+      console.error('Error fetching member circles:', memberError)
+      return NextResponse.json(
+        { error: 'Failed to fetch circles' },
+        { status: 500 }
+      )
+    }
+
+    if (!memberCircles || memberCircles.length === 0) {
+      return NextResponse.json({ circles: [] })
+    }
+
+    const circleIds = memberCircles.map(m => m.circle_id)
+
+    // Now fetch the circles with their members
     const { data: circles, error: circlesError } = await supabase
       .from('family_circles')
       .select(`
         *,
-        circle_members!inner(
+        circle_members(
           user_id,
           role,
           location_sharing_enabled,
-          users:user_id(email, full_name)
+          is_active,
+          joined_at
         )
       `)
-      .eq('circle_members.user_id', targetUserId)
-      .eq('circle_members.is_active', true)
+      .in('id', circleIds)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
 
