@@ -56,17 +56,23 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createSupabaseClient()
     
-    // Try session first (more reliable in API routes)
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-    let targetUserId: string | null = session?.user?.id || null
+    // Get the authorization header from the request
+    const authHeader = request.headers.get('authorization')
+    const cookieHeader = request.headers.get('cookie')
     
-    // If session fails, try getUser
+    console.log('🔍 [API] GET circles - Auth header present:', !!authHeader, 'Cookie present:', !!cookieHeader)
+    
+    // Try getUser first (works with both cookies and tokens)
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    let targetUserId: string | null = user?.id || null
+    
+    // If getUser fails, try session
     if (!targetUserId) {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      targetUserId = user?.id || null
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      targetUserId = session?.user?.id || null
       
       if (!targetUserId) {
-        console.error('GET circles: No user ID available. Session error:', sessionError?.message, 'Auth error:', authError?.message)
+        console.error('❌ [API] GET circles: No user ID available. Auth error:', authError?.message, 'Session error:', sessionError?.message)
         return NextResponse.json({ 
           error: 'Unauthorized',
           details: 'Please log in to view circles'
