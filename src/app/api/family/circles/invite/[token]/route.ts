@@ -49,15 +49,27 @@ export async function GET(
       )
     }
 
-    // Get invitation by token
-    const { data: invitation, error: inviteError } = await supabase
+    // Use admin client to avoid RLS issues
+    const { createClient } = require('@supabase/supabase-js')
+    const adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
+
+    // Get invitation by token (code)
+    const { data: invitation, error: inviteError } = await adminClient
       .from('circle_invitations')
       .select(`
         *,
-        circle:circle_id(id, name, description, color),
-        inviter:invited_by(id, email, full_name)
+        circle:circle_id(id, name, description, color)
       `)
-      .eq('token', token)
+      .eq('token', token.toUpperCase())
       .single()
 
     if (inviteError || !invitation) {

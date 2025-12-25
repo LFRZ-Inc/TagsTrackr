@@ -29,12 +29,15 @@ interface FamilyCirclesProps {
 }
 
 export default function FamilyCircles({ onCircleSelect }: FamilyCirclesProps) {
+  const router = useRouter()
   const [circles, setCircles] = useState<Circle[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCircle, setSelectedCircle] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
+  const [showJoinModal, setShowJoinModal] = useState(false)
+  const [joinCode, setJoinCode] = useState('')
   const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [newCircleName, setNewCircleName] = useState('')
   const [newCircleDescription, setNewCircleDescription] = useState('')
